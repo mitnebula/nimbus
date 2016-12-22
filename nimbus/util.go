@@ -17,7 +17,7 @@ func Now() int64 {
 	return time.Now().UnixNano()
 }
 
-func ThroughputFromTimes(times *Log) float64 {
+func ThroughputFromTimes(times *TimedLog) float64 {
 	//double rout = ((ack_times.size() - 1) * 1490 * 8.0) / (now - this->ack_times.front().second);
 	oldest, newest, err := times.Ends()
 	if err != nil {

@@ -75,7 +75,7 @@ func InitLog(s int) *Log {
 func (l *Log) Add(val LogVal) {
 	l.mux.Lock()
 	defer l.mux.Unlock()
-	if len(l.m) > l.Size {
+	if len(l.m) >= l.Size {
 		l.m = l.m[1:]
 	}
 
@@ -89,12 +89,17 @@ func (l *Log) Len() int {
 }
 
 func (l *Log) Ends() (LogVal, LogVal, error) {
-	l.mux.Lock()
-	defer l.mux.Unlock()
-	if len(l.m) > 1 {
-		return l.m[0], l.m[len(l.m)-1], nil
+	old, err := l.Oldest()
+	if err != nil {
+		return intLogVal(0), intLogVal(0), err
 	}
-	return intLogVal(0), intLogVal(0), fmt.Errorf("not enough values")
+
+	new, err := l.Latest()
+	if err != nil {
+		return intLogVal(0), intLogVal(0), err
+	}
+
+	return old, new, nil
 }
 
 func (l *Log) Latest() (LogVal, error) {
@@ -102,6 +107,15 @@ func (l *Log) Latest() (LogVal, error) {
 	defer l.mux.Unlock()
 	if len(l.m) > 0 {
 		return l.m[len(l.m)-1], nil
+	}
+	return intLogVal(0), fmt.Errorf("empty log")
+}
+
+func (l *Log) Oldest() (LogVal, error) {
+	l.mux.Lock()
+	defer l.mux.Unlock()
+	if len(l.m) > 0 {
+		return l.m[0], nil
 	}
 	return intLogVal(0), fmt.Errorf("empty log")
 }
@@ -142,7 +156,7 @@ func (l *Log) Avg() (LogVal, error) {
 		dv = floatLogVal(float64(n))
 	case durationLogVal:
 		sum = durationLogVal(time.Duration(0))
-		dv = floatLogVal(time.Duration(n))
+		dv = durationLogVal(time.Duration(n))
 	}
 
 	for _, v := range l.m {

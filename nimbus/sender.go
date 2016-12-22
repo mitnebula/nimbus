@@ -23,9 +23,8 @@ var beta float64
 
 // Log is thread-safe
 var rtts *Log
-var sendTimes *Log
-var ackTimes *Log
-var throughput *Log
+var sendTimes *TimedLog
+var ackTimes *TimedLog
 var rin_history *Log
 
 type Mode int
@@ -51,9 +50,8 @@ func init() {
 	beta = (est_bandwidth / 0.001) * 0.4
 
 	rtts = InitLog(900)
-	sendTimes = InitLog(500)
-	ackTimes = InitLog(500)
-	throughput = InitLog(1)
+	sendTimes = InitTimedLog(min_rtt)
+	ackTimes = InitTimedLog(min_rtt)
 	rin_history = InitLog(500)
 }
 
@@ -74,11 +72,9 @@ func Sender(ip string, port string) error {
 
 	recvExit := make(chan interface{})
 	rtt_history := make(chan int64)
-	throughput_history := make(chan float64)
 
-	go handleAck(conn, addr, rtt_history, throughput_history, recvExit)
+	go handleAck(conn, addr, rtt_history, recvExit)
 	go rttUpdater(rtt_history)
-	go throughputUpdater(throughput_history)
 	go flowRateUpdater()
 
 	go send(conn, recvExit)
@@ -96,14 +92,9 @@ func rttUpdater(rtt_history chan int64) {
 			min_rtt = rtt
 			beta = (est_bandwidth / min_rtt.Seconds()) * 0.4
 		}
+		sendTimes.UpdateDuration(rtt)
+		ackTimes.UpdateDuration(rtt)
 		rtts.Add(durationLogVal(rtt))
-	}
-}
-
-// keep r_out up to date (from received acks)
-func throughputUpdater(throughput_history chan float64) {
-	for t := range throughput_history {
-		throughput.Add(floatLogVal(t))
 	}
 }
 
@@ -173,12 +164,7 @@ func flowRateUpdater() {
 		rin := ThroughputFromTimes(sendTimes)
 		rin_history.Add(floatLogVal(rin))
 
-		tp, err := throughput.Latest()
-		if err != nil {
-			continue
-		}
-
-		rout := float64(tp.(floatLogVal))
+		rout := ThroughputFromTimes(ackTimes)
 
 		zt := est_bandwidth*(rin/rout) - rin
 		lv, err := rtts.Latest()
@@ -240,7 +226,7 @@ func send(
 
 		//fmt.Println("sending ", Now(), pkt.VirtFid, pkt.SeqNo)
 
-		sendTimes.Add(intLogVal(Now()))
+		sendTimes.Add(time.Now(), intLogVal(Now()))
 		err := SendPacket(conn, pkt, 1480)
 		if err != nil {
 			fmt.Println(err)
@@ -257,7 +243,6 @@ func handleAck(
 	conn *net.UDPConn,
 	expSrc *net.UDPAddr,
 	rtt_history chan int64,
-	throughput_history chan float64,
 	done chan interface{},
 ) {
 	for {
@@ -271,8 +256,7 @@ func handleAck(
 
 		//fmt.Println("recvdAck", Now(), pkt.VirtFid, pkt.SeqNo)
 
-		ackTimes.Add(intLogVal(Now()))
-		rout := ThroughputFromTimes(ackTimes)
+		ackTimes.Add(time.Now(), intLogVal(Now()))
 
 		// check for XTCP packet drop
 		if ok := xtcpData.checkXtcpSeq(pkt.VirtFid, pkt.SeqNo); !ok {
@@ -282,6 +266,5 @@ func handleAck(
 		}
 
 		rtt_history <- pkt.Rtt * 2 // multiply one-way delay by 2
-		throughput_history <- rout
 	}
 }
