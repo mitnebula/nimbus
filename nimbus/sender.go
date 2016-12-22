@@ -45,7 +45,7 @@ func Sender(ip string, port string) error {
 		return err
 	}
 
-	err = conn.SetWriteBuffer(2000 * 1500)
+	err = conn.SetWriteBuffer(SOCK_BUF_SIZE)
 	if err != nil {
 		fmt.Println("err setting sock wr buf sz", err)
 	}

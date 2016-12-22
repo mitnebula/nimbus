@@ -16,7 +16,7 @@ func Receiver(port string) error {
 		return err
 	}
 
-	err = rcvConn.SetReadBuffer(2000 * 1500)
+	err = rcvConn.SetReadBuffer(SOCK_BUF_SIZE)
 	if err != nil {
 		fmt.Println("err setting sock rd buf sz", err)
 	}
