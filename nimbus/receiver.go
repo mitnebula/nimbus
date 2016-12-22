@@ -5,6 +5,12 @@ import (
 	"net"
 )
 
+var recv_seqnos map[int]int
+
+func init() {
+	recv_seqnos = make(map[int]int)
+}
+
 func Receiver(port string) error {
 	addr, err := net.ResolveUDPAddr("udp4", fmt.Sprintf(":%s", port))
 	if err != nil {
@@ -21,35 +27,44 @@ func Receiver(port string) error {
 		fmt.Println("err setting sock rd buf sz", err)
 	}
 
-	err = handleRecv(rcvConn)
+	err = receive(rcvConn)
 	if err != nil {
 		fmt.Println(err)
 	}
 	return nil
 }
 
-func handleRecv(conn *net.UDPConn) error {
-	seqnos := make(map[int]int)
+func receive(conn *net.UDPConn) error {
 	for {
 		pkt, fromAddr, err := RecvPacket(conn)
 		if err != nil {
 			fmt.Println(err)
 			continue
 		}
-
 		//fmt.Println("recvd", pkt.VirtFid, pkt.SeqNo)
-		seq, ok := seqnos[pkt.VirtFid]
-		if seq != pkt.SeqNo-1 && ok {
-			fmt.Println("drop", Now(), pkt.VirtFid, pkt.SeqNo-1)
-			panic("pkt drop")
+
+		ack, err := handlePacket(pkt, fromAddr)
+		if err != nil {
+			//fmt.Println(err)
+			//continue
+			panic(err)
 		}
-		seqnos[pkt.VirtFid] = pkt.SeqNo
 
-		pkt.Rtt = Now() - pkt.Rtt
-
-		err = SendAck(conn, fromAddr, pkt)
+		err = SendAck(conn, fromAddr, ack)
 		if err != nil {
 			fmt.Println(err)
 		}
 	}
+}
+
+func handlePacket(pkt Packet, fromAddr *net.UDPAddr) (Packet, error) {
+	seq, ok := recv_seqnos[pkt.VirtFid]
+	if seq != pkt.SeqNo-1 && ok {
+		return Packet{}, fmt.Errorf("drop %v %d %d", Now(), pkt.VirtFid, pkt.SeqNo-1)
+	}
+
+	recv_seqnos[pkt.VirtFid] = pkt.SeqNo
+	pkt.Rtt = Now() - pkt.Rtt
+
+	return pkt, nil
 }
