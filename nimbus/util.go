@@ -4,12 +4,6 @@ import (
 	"time"
 )
 
-type LogDuration time.Duration
-
-func (d LogDuration) lessthan(o LogVal) bool {
-	return time.Duration(d) < time.Duration(o.(LogDuration))
-}
-
 func MakeBytes(size int) string {
 	result := make([]byte, 0, size)
 	for i := 0; i < size; i++ {
@@ -41,6 +35,6 @@ func MinRtt(rtts *Log) time.Duration {
 	if err != nil {
 		min_rtt, _ = time.ParseDuration("0s")
 	}
-	min_rtt = time.Duration(lv.(LogDuration))
+	min_rtt = time.Duration(lv.(durationLogVal))
 	return min_rtt
 }

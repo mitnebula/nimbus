@@ -7,7 +7,6 @@ import (
 )
 
 type xtcpDataContainer struct {
-	xtcp_mode       bool
 	numVirtualFlows int
 	currVirtFlow    int
 	virtual_cwnds   map[int]float64
@@ -23,7 +22,6 @@ var setcwndcounter int
 func init() {
 	setcwndcounter = 0
 	xtcpData = &xtcpDataContainer{
-		xtcp_mode:       false,
 		numVirtualFlows: 10,
 		currVirtFlow:    0,
 		virtual_cwnds:   make(map[int]float64),
@@ -81,11 +79,14 @@ func (xt *xtcpDataContainer) dropDetected(vfid int) {
 	xt.mut.Lock()
 	defer xt.mut.Unlock()
 
-	if !xt.xtcp_mode {
+	switch flowMode {
+	case BETAZERO:
+		fallthrough
+	case DELAY:
 		flowRateLock.Lock()
 		defer flowRateLock.Unlock()
 		xt.switchToXtcp(flowRate)
-	} else if xt.drop_time[vfid] <= Now() {
+	case XTCP:
 		xt.virtual_cwnds[vfid] *= 0.5
 		if xt.virtual_cwnds[vfid] < 1 {
 			xt.virtual_cwnds[vfid] = 1
@@ -95,14 +96,14 @@ func (xt *xtcpDataContainer) dropDetected(vfid int) {
 			return
 		}
 
-		xt.drop_time[vfid] = Now() + time.Duration(lv.(LogDuration)).Nanoseconds()
+		xt.drop_time[vfid] = Now() + time.Duration(lv.(durationLogVal)).Nanoseconds()
 	}
 }
 
 // assume lock already acquired
 func (xt *xtcpDataContainer) switchToXtcp(flowRate float64) {
 	fmt.Println("switching to xtcp")
-	xt.xtcp_mode = true
+	flowMode = XTCP
 	xt.setXtcpCwnd(flowRate)
 }
 

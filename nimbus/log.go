@@ -3,10 +3,13 @@ package main
 import (
 	"fmt"
 	"sync"
+	"time"
 )
 
 type LogVal interface {
 	lessthan(o LogVal) bool
+	add(o LogVal) LogVal
+	div(o LogVal) LogVal
 }
 
 type intLogVal int64
@@ -15,11 +18,55 @@ func (i intLogVal) lessthan(o LogVal) bool {
 	return int64(i) < int64(o.(intLogVal))
 }
 
+func (i intLogVal) add(o LogVal) LogVal {
+	return intLogVal(int64(i) + int64(o.(intLogVal)))
+}
+
+func (i intLogVal) div(o LogVal) LogVal {
+	return intLogVal(int64(i) / int64(o.(intLogVal)))
+}
+
+type floatLogVal float64
+
+func (f floatLogVal) lessthan(o LogVal) bool {
+	return float64(f) < float64(o.(floatLogVal))
+}
+
+func (f floatLogVal) add(o LogVal) LogVal {
+	return floatLogVal(float64(f) + float64(o.(floatLogVal)))
+}
+
+func (f floatLogVal) div(o LogVal) LogVal {
+	return floatLogVal(float64(f) / float64(o.(floatLogVal)))
+}
+
+type durationLogVal time.Duration
+
+func (d durationLogVal) lessthan(o LogVal) bool {
+	return time.Duration(d) < time.Duration(o.(durationLogVal))
+}
+
+func (d durationLogVal) add(o LogVal) LogVal {
+	return durationLogVal(time.Duration(d) + time.Duration(o.(durationLogVal)))
+}
+
+func (d durationLogVal) div(o LogVal) LogVal {
+	ns := time.Duration(d).Nanoseconds()
+	dv := time.Duration(o.(durationLogVal)).Nanoseconds()
+
+	res := ns / dv
+
+	return durationLogVal(time.Duration(res))
+}
+
 type Log struct {
 	Size int
 	m    []LogVal
 	mux  sync.Mutex
 }
+
+// TODO move to separate package
+// TODO make only published methods get the lock
 
 func InitLog(s int) *Log {
 	return &Log{Size: s, m: make([]LogVal, 0, s)}
@@ -73,4 +120,34 @@ func (l *Log) Min() (LogVal, error) {
 		}
 	}
 	return least, nil
+}
+
+func (l *Log) Avg() (LogVal, error) {
+	l.mux.Lock()
+	defer l.mux.Unlock()
+
+	n := len(l.m)
+	if n == 0 {
+		return intLogVal(0), fmt.Errorf("empty log")
+	}
+
+	var sum LogVal
+	var dv LogVal
+	switch l.m[0].(type) {
+	case intLogVal:
+		sum = intLogVal(0)
+		dv = intLogVal(n)
+	case floatLogVal:
+		sum = floatLogVal(0)
+		dv = floatLogVal(float64(n))
+	case durationLogVal:
+		sum = durationLogVal(time.Duration(0))
+		dv = floatLogVal(time.Duration(n))
+	}
+
+	for _, v := range l.m {
+		sum = sum.add(v)
+	}
+
+	return sum.div(dv), nil
 }

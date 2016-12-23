@@ -7,32 +7,54 @@ import (
 	"time"
 )
 
-const est_bandwidth = 10e6
-const alpha = 1
+const (
+	est_bandwidth = 10e6
+	alpha         = 1
 
-//const beta = 5.5 * est_bandwidth
-const beta = 2.0 * est_bandwidth
+	// rate threshold before becoming more aggressive
+	rate_thresh = 0.9 // units: factor of rin from 500 updates ago. TODO set properly
+)
 
 var flowRate float64
 var flowRateLock sync.Mutex
 
 var min_rtt time.Duration
-
-var throughput float64
-var throughputLock sync.Mutex
+var beta float64
 
 // Log is thread-safe
 var rtts *Log
 var sendTimes *Log
 var ackTimes *Log
+var throughput *Log
+var rin_history *Log
+
+type Mode int
+
+const (
+	DELAY Mode = iota
+	BETAZERO
+	XTCP
+)
+
+var flowMode Mode
+
+// beta zero mode timeout
+var betaZeroTimeout int64
 
 func init() {
+	flowMode = XTCP
+
 	flowRate = 0.82 * 1e7
 	min_rtt = time.Duration(999) * time.Hour
+
+	// (est_bandwidth / min_rtt) * C where 0 < C < 1, use C = 0.4
+	beta = (est_bandwidth / 0.001) * 0.4
 
 	rtts = InitLog(900)
 	sendTimes = InitLog(500)
 	ackTimes = InitLog(500)
+	throughput = InitLog(1)
+	rin_history = InitLog(500)
 }
 
 func Sender(ip string, port string) error {
@@ -72,17 +94,16 @@ func rttUpdater(rtt_history chan int64) {
 		rtt := time.Duration(t) * time.Nanosecond
 		if rtt < min_rtt {
 			min_rtt = rtt
+			beta = (est_bandwidth / min_rtt.Seconds()) * 0.4
 		}
-		rtts.Add(LogDuration(rtt))
+		rtts.Add(durationLogVal(rtt))
 	}
 }
 
 // keep r_out up to date (from received acks)
 func throughputUpdater(throughput_history chan float64) {
 	for t := range throughput_history {
-		throughputLock.Lock()
-		throughput = t
-		throughputLock.Unlock()
+		throughput.Add(floatLogVal(t))
 	}
 }
 
@@ -93,7 +114,14 @@ func updateRateDelay(
 	zt float64,
 	rtt time.Duration,
 ) float64 {
-	newRate := rin + alpha*(est_bandwidth-zt-rin) - beta*(rtt.Seconds()-(1.1*min_rtt.Seconds()))
+	var newRate float64
+	switch flowMode {
+	case DELAY:
+		newRate = rin + alpha*(est_bandwidth-zt-rin) - beta*(rtt.Seconds()-(1.1*min_rtt.Seconds()))
+	case BETAZERO:
+		newRate = rin + alpha*(est_bandwidth-zt-rin)
+	}
+
 	minRate := 1490 * 8.0 / min_rtt.Seconds() // send at least 1 packet per rtt
 	if newRate < minRate {
 		newRate = minRate
@@ -102,36 +130,74 @@ func updateRateDelay(
 	return newRate
 }
 
+func shouldSwitch(zt float64, rtt time.Duration) {
+	oldest, newest, err := rin_history.Ends()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	old_rin := float64(oldest.(floatLogVal))
+	rin := float64(newest.(floatLogVal))
+
+	if flowMode != XTCP && flowRate < old_rin*0.9 {
+		if flowMode == DELAY {
+			fmt.Println(Now(), "DELAY -> BETAZERO")
+			flowMode = BETAZERO
+		} else if flowMode == BETAZERO {
+			fmt.Println(Now(), "BETAZERO -> XTCP")
+			xtcpData.switchToXtcp(flowRate)
+		}
+	} else if flowMode == BETAZERO && Now() > betaZeroTimeout {
+		fmt.Println(Now(), "BETAZERO -> DELAY")
+		flowMode = DELAY
+	} else if flowMode == XTCP && rin < est_bandwidth-zt {
+		fmt.Println(Now(), "XTCP -> BETAZERO")
+		flowMode = BETAZERO
+		betaZeroTimeout = Now() + rtt.Nanoseconds()*4
+	}
+}
+
 func flowRateUpdater() {
 	for {
 		var wait time.Duration
 		// update rate every ~rtt
 		if rtts.Len() > 0 {
 			lv, _ := rtts.Latest()
-			wait = time.Duration(lv.(LogDuration)) / 5
+			wait = time.Duration(lv.(durationLogVal)) / 5
 		} else {
 			wait = time.Duration(5) * time.Millisecond
 		}
 		<-time.After(wait)
 
 		rin := ThroughputFromTimes(sendTimes)
+		rin_history.Add(floatLogVal(rin))
 
-		throughputLock.Lock()
+		tp, err := throughput.Latest()
+		if err != nil {
+			continue
+		}
 
-		rout := throughput
+		rout := float64(tp.(floatLogVal))
+
 		zt := est_bandwidth*(rin/rout) - rin
 		lv, err := rtts.Latest()
 		if err != nil {
 			continue
 		}
 
-		rtt := time.Duration(lv.(LogDuration))
+		rtt := time.Duration(lv.(durationLogVal))
+
+		shouldSwitch(zt, rtt)
 
 		flowRateLock.Lock()
 
-		if !xtcpData.xtcp_mode {
+		switch flowMode {
+		case BETAZERO:
+			fallthrough
+		case DELAY:
 			flowRate = updateRateDelay(flowRate, est_bandwidth, rin, zt, rtt)
-		} else {
+		case XTCP:
 			flowRate = xtcpData.updateRateXtcp(rtt)
 		}
 
@@ -140,7 +206,6 @@ func flowRateUpdater() {
 		}
 
 		flowRateLock.Unlock()
-		throughputLock.Unlock()
 	}
 }
 
