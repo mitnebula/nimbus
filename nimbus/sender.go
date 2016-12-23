@@ -59,7 +59,7 @@ func Sender(ip string, port string) error {
 	go throughputUpdater(throughput_history)
 	go flowRateUpdater()
 
-	go send(conn)
+	go send(conn, recvExit)
 
 	<-recvExit
 
@@ -74,7 +74,6 @@ func rttUpdater(rtt_history chan int64) {
 			min_rtt = rtt
 		}
 		rtts.Add(LogDuration(rtt))
-		//fmt.Println("rtt", rtt.Seconds())
 	}
 }
 
@@ -84,7 +83,6 @@ func throughputUpdater(throughput_history chan float64) {
 		throughputLock.Lock()
 		throughput = t
 		throughputLock.Unlock()
-		//fmt.Println("tpt", throughput)
 	}
 }
 
@@ -95,7 +93,6 @@ func updateRateDelay(
 	zt float64,
 	rtt time.Duration,
 ) float64 {
-	//min_rtt := MinRtt(rtts)
 	newRate := rin + alpha*(est_bandwidth-zt-rin) - beta*(rtt.Seconds()-(1.1*min_rtt.Seconds()))
 	minRate := 1490 * 8.0 / min_rtt.Seconds() // send at least 1 packet per rtt
 	if newRate < minRate {
@@ -135,7 +132,7 @@ func flowRateUpdater() {
 		if !xtcpData.xtcp_mode {
 			flowRate = updateRateDelay(flowRate, est_bandwidth, rin, zt, rtt)
 		} else {
-			flowRate = updateRateXtcp(rtt)
+			flowRate = xtcpData.updateRateXtcp(rtt)
 		}
 
 		if flowRate < 0 {
@@ -161,21 +158,22 @@ func flowPacer(pacing chan interface{}) {
 
 func send(
 	conn *net.UDPConn,
+	done chan interface{},
 ) error {
 	pacing := make(chan interface{})
 	go flowPacer(pacing)
 
 	for {
+		seq, vfid := xtcpData.getNextSeq()
+
 		pkt := Packet{
-			SeqNo:   xtcpData.seq_nos[xtcpData.currVirtFlow],
-			VirtFid: xtcpData.currVirtFlow,
+			SeqNo:   seq,
+			VirtFid: vfid,
 			Rtt:     Now(),
 			Payload: "",
 		}
 
 		//fmt.Println("sending ", Now(), pkt.VirtFid, pkt.SeqNo)
-
-		incrementXtcpSeq()
 
 		sendTimes.Add(intLogVal(Now()))
 		err := SendPacket(conn, pkt, 1480)
@@ -185,6 +183,9 @@ func send(
 
 		<-pacing
 	}
+
+	//done <- struct{}{}
+	//return nil
 }
 
 func handleAck(
@@ -209,11 +210,10 @@ func handleAck(
 		rout := ThroughputFromTimes(ackTimes)
 
 		// check for XTCP packet drop
-		if drop := checkXtcpSeq(pkt.VirtFid, pkt.SeqNo); !drop {
-			fmt.Println("drop", pkt.VirtFid, pkt.SeqNo-1)
-			//dropDetected(pkt.VirtFid) // TODO enable switching. for now only delay mode
+		if ok := xtcpData.checkXtcpSeq(pkt.VirtFid, pkt.SeqNo); !ok {
+			xtcpData.dropDetected(pkt.VirtFid)
 		} else {
-			increaseXtcpWind(pkt.VirtFid)
+			xtcpData.increaseXtcpWind(pkt.VirtFid)
 		}
 
 		rtt_history <- pkt.Rtt * 2 // multiply one-way delay by 2

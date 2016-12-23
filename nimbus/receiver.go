@@ -43,12 +43,8 @@ func receive(conn *net.UDPConn) error {
 		}
 		//fmt.Println("recvd", pkt.VirtFid, pkt.SeqNo)
 
-		ack, err := handlePacket(pkt, fromAddr)
-		if err != nil {
-			//fmt.Println(err)
-			//continue
-			panic(err)
-		}
+		// second return value is error if drop detected
+		ack, _ := handlePacket(pkt, fromAddr)
 
 		err = SendAck(conn, fromAddr, ack)
 		if err != nil {
@@ -58,13 +54,15 @@ func receive(conn *net.UDPConn) error {
 }
 
 func handlePacket(pkt Packet, fromAddr *net.UDPAddr) (Packet, error) {
+	err := error(nil)
 	seq, ok := recv_seqnos[pkt.VirtFid]
 	if seq != pkt.SeqNo-1 && ok {
-		return Packet{}, fmt.Errorf("drop %v %d %d", Now(), pkt.VirtFid, pkt.SeqNo-1)
+		err = fmt.Errorf("drop %v %d %d", Now(), pkt.VirtFid, pkt.SeqNo-1)
 	}
 
 	recv_seqnos[pkt.VirtFid] = pkt.SeqNo
+	//fmt.Println(recv_seqnos)
 	pkt.Rtt = Now() - pkt.Rtt
 
-	return pkt, nil
+	return pkt, err
 }

@@ -17,10 +17,12 @@ type xtcpDataContainer struct {
 	mut             sync.Mutex
 }
 
-var xtcpData xtcpDataContainer
+var xtcpData *xtcpDataContainer
+var setcwndcounter int
 
 func init() {
-	xtcpData = xtcpDataContainer{
+	setcwndcounter = 0
+	xtcpData = &xtcpDataContainer{
 		xtcp_mode:       false,
 		numVirtualFlows: 10,
 		currVirtFlow:    0,
@@ -30,7 +32,7 @@ func init() {
 		drop_time:       make(map[int]int64),
 	}
 
-	setXtcpCwnd(flowRate)
+	xtcpData.setXtcpCwnd(flowRate)
 	for vfid := 0; vfid < xtcpData.numVirtualFlows; vfid++ {
 		xtcpData.seq_nos[vfid] = 0
 		xtcpData.recv_seq_nos[vfid] = 0
@@ -38,74 +40,88 @@ func init() {
 	}
 }
 
-func updateRateXtcp(
+func (xt *xtcpDataContainer) updateRateXtcp(
 	rtt time.Duration,
 ) float64 {
-	flowRate := 0.0
-	xtcpData.mut.Lock()
-	defer xtcpData.mut.Unlock()
+	fr := 0.0
+	xt.mut.Lock()
+	defer xt.mut.Unlock()
 
-	fmt.Println(xtcpData.virtual_cwnds)
-	for i := range xtcpData.virtual_cwnds {
-		flowRate += xtcpData.virtual_cwnds[i]
+	for _, cwnd := range xt.virtual_cwnds {
+		fr += cwnd
 	}
-	fmt.Printf("curr rate: %f curr_rtt: %f\n", flowRate, rtt.Seconds())
-	return flowRate * (1480 * 8.0) / rtt.Seconds()
+
+	fr = fr * (1480 * 8.0) / rtt.Seconds()
+	fmt.Printf("time: %v xtcp_curr_rate: %f curr_rtt: %v\n", Now(), fr, rtt)
+	return fr
 }
 
-func setXtcpCwnd(flowRate float64) {
-	for vfid := 0; vfid < xtcpData.numVirtualFlows; vfid++ {
-		xtcpData.virtual_cwnds[vfid] = (0.165 * flowRate) / float64(8*1480*xtcpData.numVirtualFlows)
-	}
-	//fmt.Println("set xtcp cwnds to ", xtcpData.virtual_cwnds)
+func (xt *xtcpDataContainer) getNextSeq() (seq int, vfid int) {
+	xt.mut.Lock()
+	defer xt.mut.Unlock()
+
+	seq, vfid = xt.seq_nos[xt.currVirtFlow], xt.currVirtFlow
+	xt.seq_nos[xt.currVirtFlow]++
+	xt.currVirtFlow = (xt.currVirtFlow + 1) % xt.numVirtualFlows
+
+	return
 }
 
-func dropDetected(vfid int) {
-	xtcpData.mut.Lock()
-	defer xtcpData.mut.Unlock()
+func (xt *xtcpDataContainer) setXtcpCwnd(flowRate float64) {
+	setcwndcounter++
+	if setcwndcounter > 1 {
+		panic(false)
+	}
+	for vfid := 0; vfid < xt.numVirtualFlows; vfid++ {
+		xt.virtual_cwnds[vfid] = (0.165 * flowRate) / float64(8*1480*xt.numVirtualFlows)
+	}
+}
 
-	if !xtcpData.xtcp_mode {
+func (xt *xtcpDataContainer) dropDetected(vfid int) {
+	xt.mut.Lock()
+	defer xt.mut.Unlock()
+
+	if !xt.xtcp_mode {
 		flowRateLock.Lock()
 		defer flowRateLock.Unlock()
-		switchToXtcp(flowRate)
-	} else if xtcpData.drop_time[vfid] <= Now() {
-		xtcpData.virtual_cwnds[vfid] *= 0.5
+		xt.switchToXtcp(flowRate)
+	} else if xt.drop_time[vfid] <= Now() {
+		xt.virtual_cwnds[vfid] *= 0.5
+		if xt.virtual_cwnds[vfid] < 1 {
+			xt.virtual_cwnds[vfid] = 1
+		}
 		lv, err := rtts.Latest()
 		if err != nil {
 			return
 		}
 
-		xtcpData.drop_time[vfid] = Now() + time.Duration(lv.(LogDuration)).Nanoseconds()
+		xt.drop_time[vfid] = Now() + time.Duration(lv.(LogDuration)).Nanoseconds()
 	}
 }
 
-func switchToXtcp(flowRate float64) {
-	xtcpData.xtcp_mode = true
-	setXtcpCwnd(flowRate)
+// assume lock already acquired
+func (xt *xtcpDataContainer) switchToXtcp(flowRate float64) {
+	fmt.Println("switching to xtcp")
+	xt.xtcp_mode = true
+	xt.setXtcpCwnd(flowRate)
 }
 
-func incrementXtcpSeq() {
-	xtcpData.mut.Lock()
-	defer xtcpData.mut.Unlock()
-	xtcpData.seq_nos[xtcpData.currVirtFlow]++
-	xtcpData.currVirtFlow = (xtcpData.currVirtFlow + 1) % xtcpData.numVirtualFlows
-}
+func (xt *xtcpDataContainer) checkXtcpSeq(fid int, seq int) bool {
+	xt.mut.Lock()
+	defer xt.mut.Unlock()
 
-func checkXtcpSeq(fid int, seq int) bool {
-	xtcpData.mut.Lock()
-	defer xtcpData.mut.Unlock()
-
-	expected := xtcpData.recv_seq_nos[fid]
+	expected := xt.recv_seq_nos[fid]
 	if seq < expected {
 		panic(false)
 	}
-	xtcpData.recv_seq_nos[fid]++
+
+	xt.recv_seq_nos[fid] = seq + 1
 	return seq == expected
 }
 
-func increaseXtcpWind(fid int) {
-	xtcpData.mut.Lock()
-	defer xtcpData.mut.Unlock()
+func (xt *xtcpDataContainer) increaseXtcpWind(fid int) {
+	xt.mut.Lock()
+	defer xt.mut.Unlock()
 
-	xtcpData.virtual_cwnds[fid] += 1.0 / xtcpData.virtual_cwnds[fid]
+	xt.virtual_cwnds[fid] += 1.0 / xt.virtual_cwnds[fid]
 }
