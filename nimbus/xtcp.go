@@ -66,7 +66,7 @@ func (xt *xtcpDataContainer) getNextSeq() (seq int, vfid int) {
 }
 
 func (xt *xtcpDataContainer) setXtcpCwnd(flowRate float64) {
-	setcwndcounter++
+	setcwndcounter++ // TODO remove this sanity check (for no competition case)
 	if setcwndcounter > 1 {
 		panic(false)
 	}

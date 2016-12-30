@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"net"
 	"sync"
 	"time"
@@ -41,7 +42,7 @@ var flowMode Mode
 var betaZeroTimeout int64
 
 func init() {
-	flowMode = XTCP
+	flowMode = DELAY
 
 	flowRate = 0.82 * 1e7
 	min_rtt = time.Duration(999) * time.Hour
@@ -102,29 +103,6 @@ func rttUpdater(rtt_history chan int64) {
 	}
 }
 
-func updateRateDelay(
-	flowRate float64,
-	est_bandwidth float64,
-	rin float64,
-	zt float64,
-	rtt time.Duration,
-) float64 {
-	var newRate float64
-	switch flowMode {
-	case DELAY:
-		newRate = rin + alpha*(est_bandwidth-zt-rin) - beta*(rtt.Seconds()-(1.1*min_rtt.Seconds()))
-	case BETAZERO:
-		newRate = rin + alpha*(est_bandwidth-zt-rin)
-	}
-
-	minRate := 1490 * 8.0 / min_rtt.Seconds() // send at least 1 packet per rtt
-	if newRate < minRate {
-		newRate = minRate
-	}
-	fmt.Printf("time: %v old_rate: %f curr_rate: %f rin: %f zt: %f min_rtt: %v curr_rtt: %v\n", Now(), flowRate, newRate, rin, zt, min_rtt, rtt)
-	return newRate
-}
-
 func shouldSwitch(zt float64, rtt time.Duration) {
 	oldest, newest, err := rin_history.Ends()
 	if err != nil {
@@ -151,6 +129,29 @@ func shouldSwitch(zt float64, rtt time.Duration) {
 		flowMode = BETAZERO
 		betaZeroTimeout = Now() + rtt.Nanoseconds()*4
 	}
+}
+
+func updateRateDelay(
+	flowRate float64,
+	est_bandwidth float64,
+	rin float64,
+	zt float64,
+	rtt time.Duration,
+) float64 {
+	var newRate float64
+	switch flowMode {
+	case DELAY:
+		newRate = rin + alpha*(est_bandwidth-zt-rin) - beta*(rtt.Seconds()-(1.1*min_rtt.Seconds()))
+	case BETAZERO:
+		newRate = rin + alpha*(est_bandwidth-zt-rin)
+	}
+
+	minRate := 1490 * 8.0 / min_rtt.Seconds() // send at least 1 packet per rtt
+	if newRate < minRate || math.IsNaN(newRate) {
+		newRate = minRate
+	}
+	fmt.Printf("time: %v old_rate: %f curr_rate: %f rin: %f zt: %f min_rtt: %v curr_rtt: %v\n", Now(), flowRate, newRate, rin, zt, min_rtt, rtt)
+	return newRate
 }
 
 func flowRateUpdater() {
@@ -187,7 +188,7 @@ func flowRateUpdater() {
 
 		zt := est_bandwidth*(rin/rout) - rin
 
-		shouldSwitch(zt, rtt)
+		//shouldSwitch(zt, rtt)
 
 		flowRateLock.Lock()
 
@@ -210,7 +211,7 @@ func flowRateUpdater() {
 
 // read the current flow rate and set the pacing channel appropriately
 func flowPacer(pacing chan interface{}) {
-	for {
+	for { // cannot use time.Tick because tick interval is dynamic
 		//flowRateLock.Lock()
 		waitSeconds := 1e9 * 1500 * 8.0 / flowRate // nanoseconds to wait until next packet
 		wt := time.Duration(waitSeconds) * time.Nanosecond
@@ -233,7 +234,7 @@ func send(
 		pkt := Packet{
 			SeqNo:   seq,
 			VirtFid: vfid,
-			Rtt:     Now(),
+			Echo:    Now(),
 			Payload: "",
 		}
 
@@ -278,6 +279,7 @@ func handleAck(
 			xtcpData.increaseXtcpWind(pkt.VirtFid)
 		}
 
-		rtt_history <- pkt.Rtt * 2 // multiply one-way delay by 2
+		delay := pkt.RecvTime - pkt.Echo
+		rtt_history <- delay * 2 // multiply one-way delay by 2
 	}
 }

@@ -62,7 +62,7 @@ func handlePacket(pkt Packet, fromAddr *net.UDPAddr) (Packet, error) {
 
 	recv_seqnos[pkt.VirtFid] = pkt.SeqNo
 	//fmt.Println(recv_seqnos)
-	pkt.Rtt = Now() - pkt.Rtt
+	pkt.RecvTime = Now()
 
 	return pkt, err
 }

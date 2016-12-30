@@ -8,18 +8,20 @@ import (
 )
 
 type Packet struct {
-	SeqNo   int    // packet sequence number
-	VirtFid int    // virtual flow packet is assigned to
-	Rtt     int64  // one-way rtt value
-	Payload string // payload (useless)
+	SeqNo    int    // packet sequence number
+	VirtFid  int    // virtual flow packet is assigned to
+	Echo     int64  // time at which packet was sent
+	RecvTime int64  // time packet reached receiver
+	Payload  string // payload (useless)
 }
 
 func PrintPacket(pkt Packet) string {
 	return fmt.Sprintf(
-		"{seq %d vfid %d rtt %d size %d}",
+		"{seq %d vfid %d echo %d recv %d size %d}",
 		pkt.SeqNo,
 		pkt.VirtFid,
-		pkt.Rtt,
+		pkt.Echo,
+		pkt.RecvTime,
 		len(pkt.Payload),
 	)
 }
