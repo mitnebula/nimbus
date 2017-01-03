@@ -77,12 +77,23 @@ func Sender(ip string, port string) error {
 	go handleAck(conn, addr, rtt_history, recvExit)
 	go rttUpdater(rtt_history)
 	go flowRateUpdater()
+	go output()
 
 	go send(conn, recvExit)
 
 	<-recvExit
 
 	return nil
+}
+
+func output() {
+	for _ = range time.Tick(2 * time.Second) {
+		tpt, err := ThroughputFromTimes(ackTimes, 0)
+		if err != nil {
+			continue
+		}
+		fmt.Printf("%v : %v\n", Now(), tpt)
+	}
 }
 
 // keep rtt up to date (from received acks)
@@ -150,7 +161,7 @@ func updateRateDelay(
 	if newRate < minRate || math.IsNaN(newRate) {
 		newRate = minRate
 	}
-	fmt.Printf("time: %v old_rate: %f curr_rate: %f rin: %f zt: %f min_rtt: %v curr_rtt: %v\n", Now(), flowRate, newRate, rin, zt, min_rtt, rtt)
+	//fmt.Printf("time: %v old_rate: %f curr_rate: %f rin: %f zt: %f min_rtt: %v curr_rtt: %v\n", Now(), flowRate, newRate, rin, zt, min_rtt, rtt)
 	return newRate
 }
 
