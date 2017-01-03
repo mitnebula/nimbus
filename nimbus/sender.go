@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	est_bandwidth = 10e6
-	alpha         = 1
+	//est_bandwidth = 10e6
+	alpha = 1
 
 	// rate threshold before becoming more aggressive
 	rate_thresh = 0.9 // units: factor of rin from 500 updates ago. TODO set properly
@@ -48,7 +48,7 @@ func init() {
 	min_rtt = time.Duration(999) * time.Hour
 
 	// (est_bandwidth / min_rtt) * C where 0 < C < 1, use C = 0.4
-	beta = (est_bandwidth / 0.001) * 0.4
+	beta = (flowRate / 0.001) * 0.4
 
 	rtts = InitLog(900)
 	sendTimes = InitTimedLog(min_rtt)
@@ -93,7 +93,7 @@ func output() {
 		if err != nil {
 			continue
 		}
-		fmt.Printf("%v : %v\n", Now(), tpt)
+		fmt.Printf("%v : %v %v %v\n", Now(), tpt, time.Duration(rtt.(durationLogVal)), min_rtt)
 	}
 }
 
@@ -103,11 +103,11 @@ func rttUpdater(rtt_history chan int64) {
 		rtt := time.Duration(t) * time.Nanosecond
 		if rtt < min_rtt {
 			min_rtt = rtt
-			beta = (est_bandwidth / min_rtt.Seconds()) * 0.4
-		}
+			beta = (flowRate / min_rtt.Seconds()) * 0.4
 
-		sendTimes.UpdateDuration(rtt)
-		ackTimes.UpdateDuration(rtt)
+			sendTimes.UpdateDuration(rtt * 100)
+			ackTimes.UpdateDuration(rtt * 100)
+		}
 
 		rtts.Add(durationLogVal(rtt))
 	}
@@ -134,7 +134,7 @@ func shouldSwitch(zt float64, rtt time.Duration) {
 	} else if flowMode == BETAZERO && Now() > betaZeroTimeout {
 		fmt.Println(Now(), "BETAZERO -> DELAY")
 		flowMode = DELAY
-	} else if flowMode == XTCP && rin < est_bandwidth-zt {
+	} else if flowMode == XTCP && rin < flowRate-zt {
 		fmt.Println(Now(), "XTCP -> BETAZERO")
 		flowMode = BETAZERO
 		betaZeroTimeout = Now() + rtt.Nanoseconds()*4
@@ -142,7 +142,7 @@ func shouldSwitch(zt float64, rtt time.Duration) {
 }
 
 func updateRateDelay(
-	flowRate float64,
+	rt float64,
 	est_bandwidth float64,
 	rin float64,
 	zt float64,
@@ -151,16 +151,18 @@ func updateRateDelay(
 	var newRate float64
 	switch flowMode {
 	case DELAY:
+		beta = (rin / min_rtt.Seconds()) * 0.8
 		newRate = rin + alpha*(est_bandwidth-zt-rin) - beta*(rtt.Seconds()-(1.1*min_rtt.Seconds()))
 	case BETAZERO:
 		newRate = rin + alpha*(est_bandwidth-zt-rin)
+		panic(false)
 	}
 
 	minRate := 1490 * 8.0 / min_rtt.Seconds() // send at least 1 packet per rtt
 	if newRate < minRate || math.IsNaN(newRate) {
 		newRate = minRate
 	}
-	//fmt.Printf("time: %v old_rate: %f curr_rate: %f rin: %f zt: %f min_rtt: %v curr_rtt: %v\n", Now(), flowRate, newRate, rin, zt, min_rtt, rtt)
+	fmt.Printf("time: %v rate: %.3v -> %.3v rtt: %v/%v rin: %.3v zt: %.3v alpha_term: %.3v beta_term: %.3v\n", Now(), rt, newRate, rtt, min_rtt, rin, zt, alpha*(est_bandwidth-zt-rin), beta*(rtt.Seconds()-(1.1*min_rtt.Seconds())))
 	return newRate
 }
 
@@ -168,15 +170,15 @@ func flowRateUpdater() {
 	for {
 		var wait time.Duration
 		// update rate every ~rtt
-		if rtts.Len() > 0 {
-			lv, _ := rtts.Latest()
-			wait = time.Duration(lv.(durationLogVal)) / 5
-		} else {
+		lv, err := rtts.Latest()
+		if err != nil {
 			wait = time.Duration(5) * time.Millisecond
+		} else {
+			wait = time.Duration(lv.(durationLogVal)) / 3
 		}
 		<-time.After(wait)
 
-		lv, err := rtts.Latest()
+		lv, err = rtts.Latest()
 		if err != nil {
 			continue
 		}
@@ -184,8 +186,9 @@ func flowRateUpdater() {
 
 		rin, err := ThroughputFromTimes(sendTimes, time.Now().Add(-1*rtt), rtt)
 		if err != nil {
-			fmt.Println(err, sendTimes.Len(), CurrSpan(sendTimes.times), rtt)
-			continue
+			fmt.Println(time.Now().Add(-1*rtt), rtt)
+			panic(err)
+			//continue
 		}
 
 		rin_history.Add(floatLogVal(rin))
@@ -196,7 +199,7 @@ func flowRateUpdater() {
 
 		}
 
-		zt := est_bandwidth*(rin/rout) - rin
+		zt := rin*(rin/rout) - rin
 
 		//shouldSwitch(zt, rtt)
 
@@ -206,7 +209,7 @@ func flowRateUpdater() {
 		case BETAZERO:
 			fallthrough
 		case DELAY:
-			flowRate = updateRateDelay(flowRate, est_bandwidth, rin, zt, rtt)
+			flowRate = updateRateDelay(flowRate, rin, rin, zt, rtt)
 		case XTCP:
 			flowRate = xtcpData.updateRateXtcp(rtt)
 		}
@@ -223,8 +226,9 @@ func flowRateUpdater() {
 func flowPacer(pacing chan interface{}) {
 	for { // cannot use time.Tick because tick interval is dynamic
 		//flowRateLock.Lock()
-		waitSeconds := 1e9 * 1500 * 8.0 / flowRate // nanoseconds to wait until next packet
-		wt := time.Duration(waitSeconds) * time.Nanosecond
+		waitNanoseconds := 1e9 * 1500 * 8.0 / flowRate // nanoseconds to wait until next packet
+		fmt.Printf("%.6v @ %v\n", waitNanoseconds, flowRate)
+		wt := time.Duration(waitNanoseconds) * time.Nanosecond
 		//flowRateLock.Unlock()
 		<-time.After(wt)
 		pacing <- struct{}{}
@@ -238,6 +242,7 @@ func send(
 	pacing := make(chan interface{})
 	go flowPacer(pacing)
 
+	lastSend := time.Now()
 	for {
 		seq, vfid := xtcpData.getNextSeq()
 
@@ -248,13 +253,14 @@ func send(
 			Payload: "",
 		}
 
-		//fmt.Println("sending ", Now(), pkt.VirtFid, pkt.SeqNo)
-
 		sendTimes.Add(time.Now(), intLogVal(Now()))
 		err := SendPacket(conn, pkt, 1480)
 		if err != nil {
 			fmt.Println(err)
 		}
+
+		fmt.Printf("%v sending (%v,%v) at %.3v; fr: %.3v\n", time.Now(), pkt.VirtFid, pkt.SeqNo, 1480*8.0/(time.Since(lastSend).Seconds()), flowRate)
+		lastSend = time.Now()
 
 		<-pacing
 	}
@@ -278,18 +284,18 @@ func handleAck(
 			fmt.Println(fmt.Errorf("got packet from unexpected src: %s; expected %s", srcAddr, expSrc))
 		}
 
-		//fmt.Println("recvdAck", Now(), pkt.VirtFid, pkt.SeqNo)
-
 		ackTimes.Add(time.Now(), intLogVal(Now()))
 
 		// check for XTCP packet drop
 		if ok := xtcpData.checkXtcpSeq(pkt.VirtFid, pkt.SeqNo); !ok {
-			xtcpData.dropDetected(pkt.VirtFid)
+			//xtcpData.dropDetected(pkt.VirtFid)
 		} else {
 			xtcpData.increaseXtcpWind(pkt.VirtFid)
 		}
 
-		delay := pkt.RecvTime - pkt.Echo
-		rtt_history <- delay * 2 // multiply one-way delay by 2
+		delay := Now() - pkt.Echo // pkt.RecvTime - pkt.Echo for one way delay
+
+		fmt.Printf("%v recv ack (%v,%v) rt %v s_ech %v rtt %v\n", time.Now(), pkt.VirtFid, pkt.SeqNo, pkt.RecvTime, pkt.Echo, delay*2)
+		rtt_history <- delay // multiply one-way delay by 2
 	}
 }
