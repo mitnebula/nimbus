@@ -19,43 +19,63 @@ func Now() int64 {
 	return time.Now().UnixNano()
 }
 
-func ThroughputFromTimes(times *TimedLog, now time.Time, delay time.Duration) (float64, error) {
+func ThroughputFromTimes(times *TimedLog, now time.Time, delay time.Duration) (float64, Packet, Packet, error) {
 	times.mux.Lock()
 	defer times.mux.Unlock()
 
-	newest, _, err := times.Before(now)
-	if err != nil {
-		return 0, err
+	if times.Len() < 2 {
+		return 0, Packet{}, Packet{}, fmt.Errorf("not enough values")
 	}
 
-	oldest, ot, err := times.Before(now.Add(-1 * delay))
+	newestPkt, newestPktTime, err := times.Before(now)
 	if err != nil {
-		return 0, err
+		return 0, Packet{}, Packet{}, err
 	}
 
-	for oldest == newest {
-		// get the next oldest time
-		oldest, _, err = times.Before(ot.Add(-1 * time.Nanosecond))
+	oldestPkt, oldestPktTime, err := times.Before(now.Add(-1 * delay))
+	if err != nil {
+		return 0, Packet{}, Packet{}, err
+	}
+
+	for newestPktTime.Equal(oldestPktTime) {
+		oldestPkt, oldestPktTime, err = times.Before(newestPktTime.Add(-1 * time.Nanosecond))
 		if err != nil {
-			return 0, err
+			return 0, Packet{}, Packet{}, err
 		}
 	}
 
-	numSent, err := times.CountBetween(now, now.Add(-1*delay))
-	if err != nil {
-		return 0, err
-	}
-
-	tot := float64(numSent * 1480 * 8.0)
-	//dur := time.Unix(0, int64(newest.(intLogVal))).Sub(time.Unix(0, int64(oldest.(intLogVal))))
-	dur := float64(int64(newest.(intLogVal))-int64(oldest.(intLogVal))) / 1e9
+	dur := newestPktTime.Sub(oldestPktTime).Seconds()
+	cnt, _ := times.NumPacketsBetween(oldestPktTime, newestPktTime)
+	tot := float64(cnt * 1480 * 8.0)
 	tpt := tot / dur
-	//fmt.Println(numSent, times.Len(), newest, oldest, dur, tpt)
 	if math.IsNaN(tpt) || math.IsInf(tpt, 1) || tpt < 0 {
-		return 0, fmt.Errorf("undefined throughput: %v %v", tot, dur)
+		return 0, Packet{}, Packet{}, fmt.Errorf("undefined throughput: %v %v", tot, dur)
 	}
 
-	return tpt, nil
+	return tpt, oldestPkt, newestPkt, nil
+}
+
+func ThroughputFromPackets(times *TimedLog, oldPkt Packet, newPkt Packet) (float64, error) {
+	// set to 0 to make it match in the map
+	oldPkt.RecvTime = 0
+	newPkt.RecvTime = 0
+
+	times.mux.Lock()
+
+	oldPktTime, ok := times.m[oldPkt]
+	if !ok {
+		fmt.Println(oldPkt, times.m)
+		panic("can't find packet time")
+	}
+	newPktTime, ok := times.m[newPkt]
+	if !ok {
+		fmt.Println(newPkt, times.m)
+		panic("can't find packet time")
+	}
+
+	times.mux.Unlock()
+	tpt, _, _, err := ThroughputFromTimes(times, newPktTime, newPktTime.Sub(oldPktTime))
+	return tpt, err
 }
 
 func MinRtt(rtts *Log) time.Duration {

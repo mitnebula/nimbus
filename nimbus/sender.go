@@ -89,7 +89,7 @@ func Sender(ip string, port string) error {
 func output() {
 	for _ = range time.Tick(2 * time.Second) {
 		rtt, _ := rtts.Latest()
-		tpt, err := ThroughputFromTimes(ackTimes, time.Now(), time.Duration(rtt.(durationLogVal)))
+		tpt, _, _, err := ThroughputFromTimes(ackTimes, time.Now(), time.Duration(rtt.(durationLogVal)))
 		if err != nil {
 			continue
 		}
@@ -153,16 +153,13 @@ func updateRateDelay(
 	case DELAY:
 		beta = (rin / min_rtt.Seconds()) * 0.8
 		newRate = rin + alpha*(est_bandwidth-zt-rin) - beta*(rtt.Seconds()-(1.1*min_rtt.Seconds()))
-	case BETAZERO:
-		newRate = rin + alpha*(est_bandwidth-zt-rin)
-		panic(false)
 	}
 
 	minRate := 1490 * 8.0 / min_rtt.Seconds() // send at least 1 packet per rtt
 	if newRate < minRate || math.IsNaN(newRate) {
 		newRate = minRate
 	}
-	fmt.Printf("time: %v rate: %.3v -> %.3v rtt: %v/%v rin: %.3v zt: %.3v alpha_term: %.3v beta_term: %.3v\n", Now(), rt, newRate, rtt, min_rtt, rin, zt, alpha*(est_bandwidth-zt-rin), beta*(rtt.Seconds()-(1.1*min_rtt.Seconds())))
+	//fmt.Printf("time: %v rate: %.3v -> %.3v rtt: %v/%v rin: %.3v zt: %.3v alpha_term: %.3v beta_term: %.3v\n", Now(), rt, newRate, rtt, min_rtt, rin, zt, alpha*(est_bandwidth-zt-rin), beta*(rtt.Seconds()-(1.1*min_rtt.Seconds())))
 	return newRate
 }
 
@@ -180,24 +177,23 @@ func flowRateUpdater() {
 
 		lv, err = rtts.Latest()
 		if err != nil {
-			continue
+			panic(err)
+			//continue
 		}
 		rtt := time.Duration(lv.(durationLogVal))
 
-		rin, err := ThroughputFromTimes(sendTimes, time.Now().Add(-1*rtt), rtt)
+		rout, oldPkt, newPkt, err := ThroughputFromTimes(ackTimes, time.Now(), rtt)
 		if err != nil {
-			fmt.Println(time.Now().Add(-1*rtt), rtt)
 			panic(err)
 			//continue
 		}
 
-		rin_history.Add(floatLogVal(rin))
-
-		rout, err := ThroughputFromTimes(ackTimes, time.Now(), rtt)
+		rin, err := ThroughputFromPackets(sendTimes, oldPkt, newPkt)
 		if err != nil {
 			continue
-
 		}
+
+		rin_history.Add(floatLogVal(rin))
 
 		zt := rin*(rin/rout) - rin
 
@@ -206,8 +202,6 @@ func flowRateUpdater() {
 		flowRateLock.Lock()
 
 		switch flowMode {
-		case BETAZERO:
-			fallthrough
 		case DELAY:
 			flowRate = updateRateDelay(flowRate, rin, rin, zt, rtt)
 		case XTCP:
@@ -227,7 +221,6 @@ func flowPacer(pacing chan interface{}) {
 	for { // cannot use time.Tick because tick interval is dynamic
 		//flowRateLock.Lock()
 		waitNanoseconds := 1e9 * 1500 * 8.0 / flowRate // nanoseconds to wait until next packet
-		fmt.Printf("%.6v @ %v\n", waitNanoseconds, flowRate)
 		wt := time.Duration(waitNanoseconds) * time.Nanosecond
 		//flowRateLock.Unlock()
 		<-time.After(wt)
@@ -242,7 +235,7 @@ func send(
 	pacing := make(chan interface{})
 	go flowPacer(pacing)
 
-	lastSend := time.Now()
+	//lastSend := time.Now()
 	for {
 		seq, vfid := xtcpData.getNextSeq()
 
@@ -253,14 +246,14 @@ func send(
 			Payload: "",
 		}
 
-		sendTimes.Add(time.Now(), intLogVal(Now()))
+		sendTimes.Add(time.Now(), pkt)
 		err := SendPacket(conn, pkt, 1480)
 		if err != nil {
 			fmt.Println(err)
 		}
 
-		fmt.Printf("%v sending (%v,%v) at %.3v; fr: %.3v\n", time.Now(), pkt.VirtFid, pkt.SeqNo, 1480*8.0/(time.Since(lastSend).Seconds()), flowRate)
-		lastSend = time.Now()
+		//fmt.Printf("%v sending (%v,%v) at %.3v; fr: %.3v\n", time.Now(), pkt.VirtFid, pkt.SeqNo, 1480*8.0/(time.Since(lastSend).Seconds()), flowRate)
+		//lastSend = time.Now()
 
 		<-pacing
 	}
@@ -284,7 +277,7 @@ func handleAck(
 			fmt.Println(fmt.Errorf("got packet from unexpected src: %s; expected %s", srcAddr, expSrc))
 		}
 
-		ackTimes.Add(time.Now(), intLogVal(Now()))
+		ackTimes.Add(time.Now(), pkt)
 
 		// check for XTCP packet drop
 		if ok := xtcpData.checkXtcpSeq(pkt.VirtFid, pkt.SeqNo); !ok {
@@ -293,9 +286,9 @@ func handleAck(
 			xtcpData.increaseXtcpWind(pkt.VirtFid)
 		}
 
-		delay := Now() - pkt.Echo // pkt.RecvTime - pkt.Echo for one way delay
+		delay := pkt.RecvTime - pkt.Echo // one way delay
 
-		fmt.Printf("%v recv ack (%v,%v) rt %v s_ech %v rtt %v\n", time.Now(), pkt.VirtFid, pkt.SeqNo, pkt.RecvTime, pkt.Echo, delay*2)
-		rtt_history <- delay // multiply one-way delay by 2
+		//fmt.Printf("%v recv ack (%v,%v) rt %v s_ech %v rtt %v\n", time.Now(), pkt.VirtFid, pkt.SeqNo, pkt.RecvTime, pkt.Echo, delay*2)
+		rtt_history <- delay * 2 // multiply one-way delay by 2
 	}
 }
