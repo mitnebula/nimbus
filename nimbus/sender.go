@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"math"
+	//	"math"
 	"net"
 	"sync"
 	"time"
@@ -77,7 +77,7 @@ func Sender(ip string, port string) error {
 	go handleAck(conn, addr, rtt_history, recvExit)
 	go rttUpdater(rtt_history)
 	go flowRateUpdater()
-	go output()
+	//go output()
 
 	go send(conn, recvExit)
 
@@ -110,6 +110,8 @@ func rttUpdater(rtt_history chan int64) {
 		}
 
 		rtts.Add(durationLogVal(rtt))
+
+		fmt.Printf("%v %v %v\n", time.Now(), rtt, min_rtt)
 	}
 }
 
@@ -148,19 +150,15 @@ func updateRateDelay(
 	zt float64,
 	rtt time.Duration,
 ) float64 {
-	var newRate float64
-	switch flowMode {
-	case DELAY:
-		beta = (rin / min_rtt.Seconds()) * 0.8
-		newRate = rin + alpha*(est_bandwidth-zt-rin) - beta*(rtt.Seconds()-(1.1*min_rtt.Seconds()))
-	}
+	//beta = (rin / min_rtt.Seconds()) * 0.8
+	//newRate := rin + alpha*(est_bandwidth-zt-rin) - beta*(rtt.Seconds()-(1.1*min_rtt.Seconds()))
 
 	minRate := 1490 * 8.0 / min_rtt.Seconds() // send at least 1 packet per rtt
-	if newRate < minRate || math.IsNaN(newRate) {
-		newRate = minRate
-	}
+	//if newRate < minRate || math.IsNaN(newRate) {
+	//	newRate = minRate
+	//}
 	//fmt.Printf("time: %v rate: %.3v -> %.3v rtt: %v/%v rin: %.3v zt: %.3v alpha_term: %.3v beta_term: %.3v\n", Now(), rt, newRate, rtt, min_rtt, rin, zt, alpha*(est_bandwidth-zt-rin), beta*(rtt.Seconds()-(1.1*min_rtt.Seconds())))
-	return newRate
+	return minRate
 }
 
 func flowRateUpdater() {
@@ -177,15 +175,13 @@ func flowRateUpdater() {
 
 		lv, err = rtts.Latest()
 		if err != nil {
-			panic(err)
-			//continue
+			continue
 		}
 		rtt := time.Duration(lv.(durationLogVal))
 
 		rout, oldPkt, newPkt, err := ThroughputFromTimes(ackTimes, time.Now(), rtt)
 		if err != nil {
-			panic(err)
-			//continue
+			continue
 		}
 
 		rin, err := ThroughputFromPackets(sendTimes, oldPkt, newPkt)
@@ -273,7 +269,7 @@ func handleAck(
 		if err != nil {
 			fmt.Println(err)
 		}
-		if fmt.Sprintf("%s", srcAddr) != fmt.Sprintf("%s", expSrc) {
+		if srcAddr.String() != expSrc.String() {
 			fmt.Println(fmt.Errorf("got packet from unexpected src: %s; expected %s", srcAddr, expSrc))
 		}
 

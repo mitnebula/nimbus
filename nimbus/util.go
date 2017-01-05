@@ -64,13 +64,11 @@ func ThroughputFromPackets(times *TimedLog, oldPkt Packet, newPkt Packet) (float
 
 	oldPktTime, ok := times.m[oldPkt]
 	if !ok {
-		fmt.Println(oldPkt, times.m)
-		panic("can't find packet time")
+		return 0, fmt.Errorf("can't find packet time: %v", oldPkt)
 	}
 	newPktTime, ok := times.m[newPkt]
 	if !ok {
-		fmt.Println(newPkt, times.m)
-		panic("can't find packet time")
+		return 0, fmt.Errorf("can't find packet time: %v", newPkt)
 	}
 
 	times.mux.Unlock()
