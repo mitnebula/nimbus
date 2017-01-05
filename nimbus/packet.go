@@ -26,26 +26,6 @@ func PrintPacket(pkt Packet) string {
 	)
 }
 
-func SendAck(
-	conn *net.UDPConn,
-	addr *net.UDPAddr,
-	pkt Packet,
-) error {
-	var b bytes.Buffer
-
-	err := gob.NewEncoder(&b).Encode(pkt)
-	if err != nil {
-		return err
-	}
-
-	_, err = conn.WriteToUDP(b.Bytes(), addr)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func SendPacket(
 	conn *net.UDPConn,
 	pkt Packet,
@@ -62,6 +42,25 @@ func SendPacket(
 	pad := size - b.Len() - 32
 	pkt.Payload = MakeBytes(pad)
 	err = enc.Encode(pkt)
+	if err != nil {
+		return err
+	}
+
+	_, err = conn.Write(b.Bytes())
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func SendAck(
+	conn *net.UDPConn,
+	pkt Packet,
+) error {
+	var b bytes.Buffer
+
+	err := gob.NewEncoder(&b).Encode(pkt)
 	if err != nil {
 		return err
 	}

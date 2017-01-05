@@ -27,6 +27,30 @@ func Receiver(port string) error {
 		fmt.Println("err setting sock rd buf sz", err)
 	}
 
+	// wait for first packet
+	pkt, fromAddr, err := RecvPacket(rcvConn)
+	if err != nil {
+		return err
+	}
+
+	// close and reopen
+	rcvConn.Close()
+
+	// dial connection to send ACKs
+	rcvConn, err = net.DialUDP("udp4", addr, fromAddr)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("connected to ", fromAddr)
+
+	// send first ack
+	ack, _ := handlePacket(pkt)
+	err = SendAck(rcvConn, ack)
+	if err != nil {
+		return err
+	}
+
 	err = receive(rcvConn)
 	if err != nil {
 		fmt.Println(err)
@@ -41,19 +65,26 @@ func receive(conn *net.UDPConn) error {
 			fmt.Println(err)
 			continue
 		}
+
+		if fromAddr.String() != conn.RemoteAddr().String() {
+			// got packet from some other connection
+			fmt.Println("got unknown packet", fromAddr, conn.RemoteAddr())
+			continue
+		}
+
 		//fmt.Println("recvd", pkt.VirtFid, pkt.SeqNo)
 
 		// second return value is error if drop detected
-		ack, _ := handlePacket(pkt, fromAddr)
+		ack, _ := handlePacket(pkt)
 
-		err = SendAck(conn, fromAddr, ack)
+		err = SendAck(conn, ack)
 		if err != nil {
 			fmt.Println(err)
 		}
 	}
 }
 
-func handlePacket(pkt Packet, fromAddr *net.UDPAddr) (Packet, error) {
+func handlePacket(pkt Packet) (Packet, error) {
 	err := error(nil)
 	seq, ok := recv_seqnos[pkt.VirtFid]
 	if seq != pkt.SeqNo-1 && ok {
