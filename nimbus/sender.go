@@ -2,14 +2,14 @@ package main
 
 import (
 	"fmt"
-	//	"math"
+	"math"
 	"net"
 	"sync"
 	"time"
 )
 
 const (
-	//est_bandwidth = 10e6
+	est_bandwidth = 12e6
 	alpha = 1
 
 	// rate threshold before becoming more aggressive
@@ -44,11 +44,11 @@ var betaZeroTimeout int64
 func init() {
 	flowMode = DELAY
 
-	flowRate = 0.82 * 1e7
+	flowRate = 8.2 * 1e6
 	min_rtt = time.Duration(999) * time.Hour
 
 	// (est_bandwidth / min_rtt) * C where 0 < C < 1, use C = 0.4
-	beta = (flowRate / 0.001) * 0.4
+	beta = (flowRate / 0.001) * 0.33
 
 	rtts = InitLog(900)
 	sendTimes = InitTimedLog(min_rtt)
@@ -103,15 +103,12 @@ func rttUpdater(rtt_history chan int64) {
 		rtt := time.Duration(t) * time.Nanosecond
 		if rtt < min_rtt {
 			min_rtt = rtt
-			beta = (flowRate / min_rtt.Seconds()) * 0.4
 
 			sendTimes.UpdateDuration(rtt * 100)
 			ackTimes.UpdateDuration(rtt * 100)
 		}
 
 		rtts.Add(durationLogVal(rtt))
-
-		fmt.Printf("%v %v %v\n", time.Now(), rtt, min_rtt)
 	}
 }
 
@@ -150,15 +147,16 @@ func updateRateDelay(
 	zt float64,
 	rtt time.Duration,
 ) float64 {
-	//beta = (rin / min_rtt.Seconds()) * 0.8
-	//newRate := rin + alpha*(est_bandwidth-zt-rin) - beta*(rtt.Seconds()-(1.1*min_rtt.Seconds()))
+	beta = (rin / rtt.Seconds()) * 0.33
+	newRate := rin + alpha*(est_bandwidth-zt-rin) - beta*(rtt.Seconds()-(1.25*min_rtt.Seconds()))
 
 	minRate := 1490 * 8.0 / min_rtt.Seconds() // send at least 1 packet per rtt
-	//if newRate < minRate || math.IsNaN(newRate) {
-	//	newRate = minRate
-	//}
-	//fmt.Printf("time: %v rate: %.3v -> %.3v rtt: %v/%v rin: %.3v zt: %.3v alpha_term: %.3v beta_term: %.3v\n", Now(), rt, newRate, rtt, min_rtt, rin, zt, alpha*(est_bandwidth-zt-rin), beta*(rtt.Seconds()-(1.1*min_rtt.Seconds())))
-	return minRate
+	if newRate < minRate || math.IsNaN(newRate) {
+		newRate = minRate
+	}
+
+    fmt.Printf(" alpha_term: %.3v beta_term: %.3v rate: %.3v -> %.3v\n", alpha*(est_bandwidth-zt-rin), beta*(rtt.Seconds()-(1.1*min_rtt.Seconds())), rt, newRate)
+	return newRate
 }
 
 func flowRateUpdater() {
@@ -191,7 +189,9 @@ func flowRateUpdater() {
 
 		rin_history.Add(floatLogVal(rin))
 
-		zt := rin*(rin/rout) - rin
+		zt := est_bandwidth * (rin/rout) - rin
+	
+        fmt.Printf("time: %v rtt: %v/%v rin: %.3v rout: %.3v zt: %.3v", Now(), rtt, min_rtt, rin, rout, zt)
 
 		//shouldSwitch(zt, rtt)
 
@@ -199,7 +199,7 @@ func flowRateUpdater() {
 
 		switch flowMode {
 		case DELAY:
-			flowRate = updateRateDelay(flowRate, rin, rin, zt, rtt)
+			flowRate = updateRateDelay(flowRate, est_bandwidth, rin, zt, rtt)
 		case XTCP:
 			flowRate = xtcpData.updateRateXtcp(rtt)
 		}
