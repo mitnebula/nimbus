@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"math"
+	//"math"
 	"net"
 	"sync"
 	"time"
@@ -10,10 +10,12 @@ import (
 
 const (
 	est_bandwidth = 12e6
-	alpha = 1
+	alpha         = 1
 
 	// rate threshold before becoming more aggressive
 	rate_thresh = 0.9 // units: factor of rin from 500 updates ago. TODO set properly
+
+	ONE_PACKET = 1500.0 * 8.0
 )
 
 var flowRate float64
@@ -147,16 +149,16 @@ func updateRateDelay(
 	zt float64,
 	rtt time.Duration,
 ) float64 {
-	beta = (rin / rtt.Seconds()) * 0.33
-	newRate := rin + alpha*(est_bandwidth-zt-rin) - beta*(rtt.Seconds()-(1.25*min_rtt.Seconds()))
+	//beta = (rin / rtt.Seconds()) * 0.33
+	//newRate := rin + alpha*(est_bandwidth-zt-rin) - beta*(rtt.Seconds()-(1.25*min_rtt.Seconds()))
 
-	minRate := 1490 * 8.0 / min_rtt.Seconds() // send at least 1 packet per rtt
-	if newRate < minRate || math.IsNaN(newRate) {
-		newRate = minRate
-	}
+	//minRate := 1490 * 8.0 / min_rtt.Seconds() // send at least 1 packet per rtt
+	//if newRate < minRate || math.IsNaN(newRate) {
+	//	newRate = minRate
+	//}
 
-    fmt.Printf(" alpha_term: %.3v beta_term: %.3v rate: %.3v -> %.3v\n", alpha*(est_bandwidth-zt-rin), beta*(rtt.Seconds()-(1.1*min_rtt.Seconds())), rt, newRate)
-	return newRate
+	//fmt.Printf(" alpha_term: %.3v beta_term: %.3v rate: %.3v -> %.3v\n", alpha*(est_bandwidth-zt-rin), beta*(rtt.Seconds()-(1.1*min_rtt.Seconds())), rt, newRate)
+	return 11e6
 }
 
 func flowRateUpdater() {
@@ -189,9 +191,9 @@ func flowRateUpdater() {
 
 		rin_history.Add(floatLogVal(rin))
 
-		zt := est_bandwidth * (rin/rout) - rin
-	
-        fmt.Printf("time: %v rtt: %v/%v rin: %.3v rout: %.3v zt: %.3v", Now(), rtt, min_rtt, rin, rout, zt)
+		zt := est_bandwidth*(rin/rout) - rin
+
+		//fmt.Printf("time: %v rtt: %v/%v rin: %.3v rout: %.3v zt: %.3v\n", Now(), rtt, min_rtt, rin, rout, zt)
 
 		//shouldSwitch(zt, rtt)
 
@@ -214,13 +216,18 @@ func flowRateUpdater() {
 
 // read the current flow rate and set the pacing channel appropriately
 func flowPacer(pacing chan interface{}) {
+	credit := float64(0.0)
 	for { // cannot use time.Tick because tick interval is dynamic
-		//flowRateLock.Lock()
-		waitNanoseconds := 1e9 * 1500 * 8.0 / flowRate // nanoseconds to wait until next packet
+		waitNanoseconds := 1e9 * ONE_PACKET / flowRate // nanoseconds to wait until next packet
 		wt := time.Duration(waitNanoseconds) * time.Nanosecond
-		//flowRateLock.Unlock()
+		beforeSleep := time.Now()
 		<-time.After(wt)
-		pacing <- struct{}{}
+		credit += time.Since(beforeSleep).Seconds() * flowRate
+
+		for credit >= ONE_PACKET {
+			pacing <- struct{}{}
+			credit -= ONE_PACKET
+		}
 	}
 }
 
@@ -231,7 +238,7 @@ func send(
 	pacing := make(chan interface{})
 	go flowPacer(pacing)
 
-	//lastSend := time.Now()
+	lastSend := time.Now()
 	for {
 		seq, vfid := xtcpData.getNextSeq()
 
@@ -243,13 +250,13 @@ func send(
 		}
 
 		sendTimes.Add(time.Now(), pkt)
-		err := SendPacket(conn, pkt, 1480)
+		err := SendPacket(conn, pkt, 1500)
 		if err != nil {
 			fmt.Println(err)
 		}
 
-		//fmt.Printf("%v sending (%v,%v) at %.3v; fr: %.3v\n", time.Now(), pkt.VirtFid, pkt.SeqNo, 1480*8.0/(time.Since(lastSend).Seconds()), flowRate)
-		//lastSend = time.Now()
+		fmt.Printf("%v sending at %.3v; fr: %.3v\n", time.Now(), 1500*8.0/(time.Since(lastSend).Seconds()), flowRate)
+		lastSend = time.Now()
 
 		<-pacing
 	}

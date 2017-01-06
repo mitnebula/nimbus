@@ -39,7 +39,7 @@ func SendPacket(
 		return err
 	}
 
-	pad := size - b.Len() - 32
+	pad := size - b.Len() - 40
 	pkt.Payload = MakeBytes(pad)
 	err = enc.Encode(pkt)
 	if err != nil {

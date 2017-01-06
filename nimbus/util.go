@@ -46,7 +46,7 @@ func ThroughputFromTimes(times *TimedLog, now time.Time, delay time.Duration) (f
 
 	dur := newestPktTime.Sub(oldestPktTime).Seconds()
 	cnt, _ := times.NumPacketsBetween(oldestPktTime, newestPktTime)
-	tot := float64(cnt * 1480 * 8.0)
+	tot := float64(cnt * ONE_PACKET)
 	tpt := tot / dur
 	if math.IsNaN(tpt) || math.IsInf(tpt, 1) || tpt < 0 {
 		return 0, Packet{}, Packet{}, fmt.Errorf("undefined throughput: %v %v", tot, dur)
