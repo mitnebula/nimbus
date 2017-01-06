@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	//"math"
+	"math"
 	"net"
 	"os"
 	"os/signal"
@@ -93,7 +93,7 @@ func Sender(ip string, port string) error {
 	go handleAck(conn, addr, rtt_history, recvExit)
 	go rttUpdater(rtt_history)
 	go flowRateUpdater()
-	//go output()
+	go output()
 
 	startTime = time.Now()
 	go send(conn, recvExit)
@@ -175,16 +175,16 @@ func updateRateDelay(
 	zt float64,
 	rtt time.Duration,
 ) float64 {
-	//beta = (rin / rtt.Seconds()) * 0.33
-	//newRate := rin + alpha*(est_bandwidth-zt-rin) - beta*(rtt.Seconds()-(1.25*min_rtt.Seconds()))
+	beta = (rin / rtt.Seconds()) * 0.33
+	newRate := rin + alpha*(est_bandwidth-zt-rin) - beta*(rtt.Seconds()-(1.25*min_rtt.Seconds()))
 
-	//minRate := 1490 * 8.0 / min_rtt.Seconds() // send at least 1 packet per rtt
-	//if newRate < minRate || math.IsNaN(newRate) {
-	//	newRate = minRate
-	//}
+	minRate := 1500 * 8.0 / min_rtt.Seconds() // send at least 1 packet per rtt
+	if newRate < minRate || math.IsNaN(newRate) {
+		newRate = minRate
+	}
 
 	//fmt.Printf(" alpha_term: %.3v beta_term: %.3v rate: %.3v -> %.3v\n", alpha*(est_bandwidth-zt-rin), beta*(rtt.Seconds()-(1.1*min_rtt.Seconds())), rt, newRate)
-	return 11e6
+	return newRate
 }
 
 func flowRateUpdater() {
@@ -219,7 +219,7 @@ func flowRateUpdater() {
 
 		zt := est_bandwidth*(rin/rout) - rin
 
-		fmt.Printf("time: %v rtt: %v/%v rin: %.3v rout: %.3v zt: %.3v\n", Now(), rtt, min_rtt, rin, rout, zt)
+		//fmt.Printf("time: %v rtt: %v/%v rin: %.3v rout: %.3v zt: %.3v\n", Now(), rtt, min_rtt, rin, rout, zt)
 
 		//shouldSwitch(zt, rtt)
 
