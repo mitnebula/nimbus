@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"math"
 	"time"
 )
 
@@ -17,21 +19,43 @@ func Now() int64 {
 	return time.Now().UnixNano()
 }
 
-func ThroughputFromTimes(times *TimedLog, delay time.Duration) (float64, error) {
-	//double rout = ((ack_times.size() - 1) * 1490 * 8.0) / (now - this->ack_times.front().second);
-	newest, _, err := times.Latest(delay)
+func ThroughputFromTimes(times *TimedLog, now time.Time, delay time.Duration) (float64, error) {
+	times.mux.Lock()
+	defer times.mux.Unlock()
+
+	newest, _, err := times.Before(now)
 	if err != nil {
 		return 0, err
 	}
 
-	oldest, _, err := times.Oldest(delay)
+	oldest, ot, err := times.Before(now.Add(-1 * delay))
 	if err != nil {
 		return 0, err
 	}
 
-	dur := time.Unix(0, int64(newest.(intLogVal))).Sub(time.Unix(0, int64(oldest.(intLogVal))))
+	for oldest == newest {
+		// get the next oldest time
+		oldest, _, err = times.Before(ot.Add(-1 * time.Nanosecond))
+		if err != nil {
+			return 0, err
+		}
+	}
 
-	return float64((times.Len()-1)*1480*8.0) / dur.Seconds(), nil
+	numSent, err := times.CountBetween(now, now.Add(-1*delay))
+	if err != nil {
+		return 0, err
+	}
+
+	tot := float64(numSent * 1480 * 8.0)
+	//dur := time.Unix(0, int64(newest.(intLogVal))).Sub(time.Unix(0, int64(oldest.(intLogVal))))
+	dur := float64(int64(newest.(intLogVal))-int64(oldest.(intLogVal))) / 1e9
+	tpt := tot / dur
+	//fmt.Println(numSent, times.Len(), newest, oldest, dur, tpt)
+	if math.IsNaN(tpt) || math.IsInf(tpt, 1) || tpt < 0 {
+		return 0, fmt.Errorf("undefined throughput: %v %v", tot, dur)
+	}
+
+	return tpt, nil
 }
 
 func MinRtt(rtts *Log) time.Duration {

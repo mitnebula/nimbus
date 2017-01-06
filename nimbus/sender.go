@@ -51,8 +51,8 @@ func init() {
 	beta = (est_bandwidth / 0.001) * 0.4
 
 	rtts = InitLog(900)
-	sendTimes = InitTimedLog(min_rtt, 0)
-	ackTimes = InitTimedLog(min_rtt, 0)
+	sendTimes = InitTimedLog(min_rtt)
+	ackTimes = InitTimedLog(min_rtt)
 	rin_history = InitLog(500)
 }
 
@@ -88,7 +88,8 @@ func Sender(ip string, port string) error {
 
 func output() {
 	for _ = range time.Tick(2 * time.Second) {
-		tpt, err := ThroughputFromTimes(ackTimes, 0)
+		rtt, _ := rtts.Latest()
+		tpt, err := ThroughputFromTimes(ackTimes, time.Now(), time.Duration(rtt.(durationLogVal)))
 		if err != nil {
 			continue
 		}
@@ -107,8 +108,6 @@ func rttUpdater(rtt_history chan int64) {
 
 		sendTimes.UpdateDuration(rtt)
 		ackTimes.UpdateDuration(rtt)
-		sendTimes.UpdateSlack(rtt * 2)
-		ackTimes.UpdateSlack(rtt * 2)
 
 		rtts.Add(durationLogVal(rtt))
 	}
@@ -183,7 +182,7 @@ func flowRateUpdater() {
 		}
 		rtt := time.Duration(lv.(durationLogVal))
 
-		rin, err := ThroughputFromTimes(sendTimes, rtt)
+		rin, err := ThroughputFromTimes(sendTimes, time.Now().Add(-1*rtt), rtt)
 		if err != nil {
 			fmt.Println(err, sendTimes.Len(), CurrSpan(sendTimes.times), rtt)
 			continue
@@ -191,7 +190,7 @@ func flowRateUpdater() {
 
 		rin_history.Add(floatLogVal(rin))
 
-		rout, err := ThroughputFromTimes(ackTimes, 0)
+		rout, err := ThroughputFromTimes(ackTimes, time.Now(), rtt)
 		if err != nil {
 			continue
 

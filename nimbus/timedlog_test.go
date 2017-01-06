@@ -23,7 +23,7 @@ func TestTimeLimit(t *testing.T) {
 func TestChangingTimeLimit(t *testing.T) {
 	startDur := time.Duration(10) * time.Millisecond
 	realDur := time.Duration(15) * time.Millisecond
-	l := InitTimedLog(startDur, 0)
+	l := InitTimedLog(startDur)
 
 	start := time.Now()
 	for i := time.Now(); i.Before(start.Add(startDur * 5)); i = time.Now() {
@@ -45,8 +45,7 @@ func TestChangingTimeLimit(t *testing.T) {
 
 func TestDelayQuery(t *testing.T) {
 	dur := time.Duration(10) * time.Millisecond
-	sl := time.Duration(3) * time.Millisecond
-	l := InitTimedLog(dur, sl)
+	l := InitTimedLog(dur)
 
 	start := time.Now()
 	for i := time.Now(); i.Before(start.Add(dur * 2)); i = time.Now() {
