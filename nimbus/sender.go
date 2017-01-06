@@ -4,6 +4,8 @@ import (
 	"fmt"
 	//"math"
 	"net"
+	"os"
+	"os/signal"
 	"sync"
 	"time"
 )
@@ -43,6 +45,11 @@ var flowMode Mode
 // beta zero mode timeout
 var betaZeroTimeout int64
 
+// overall statistics
+var sendCount int64
+var recvCount int64
+var startTime time.Time
+
 func init() {
 	flowMode = DELAY
 
@@ -56,6 +63,9 @@ func init() {
 	sendTimes = InitTimedLog(min_rtt)
 	ackTimes = InitTimedLog(min_rtt)
 	rin_history = InitLog(500)
+
+	sendCount = 0
+	recvCount = 0
 }
 
 func Sender(ip string, port string) error {
@@ -76,16 +86,32 @@ func Sender(ip string, port string) error {
 	recvExit := make(chan interface{})
 	rtt_history := make(chan int64)
 
+	//print on ctrl-c
+	procExit := make(chan os.Signal, 1)
+	signal.Notify(procExit, os.Interrupt)
+
 	go handleAck(conn, addr, rtt_history, recvExit)
 	go rttUpdater(rtt_history)
 	go flowRateUpdater()
 	//go output()
 
+	startTime = time.Now()
 	go send(conn, recvExit)
+	go exitStats(procExit, recvExit)
 
 	<-recvExit
 
 	return nil
+}
+
+func exitStats(procExit chan os.Signal, done chan interface{}) {
+	<-procExit
+	elapsed := time.Since(startTime)
+	totalBytes := float64(sendCount * ONE_PACKET)
+	fmt.Printf("Sent: throughput %.4v; %v packets in %v\n", totalBytes/elapsed.Seconds(), sendCount, elapsed)
+	totalBytes = float64(recvCount * ONE_PACKET)
+	fmt.Printf("Received: throughput %.4v; %v packets in %v\n", totalBytes/elapsed.Seconds(), recvCount, elapsed)
+	done <- struct{}{}
 }
 
 func output() {
@@ -193,7 +219,7 @@ func flowRateUpdater() {
 
 		zt := est_bandwidth*(rin/rout) - rin
 
-		//fmt.Printf("time: %v rtt: %v/%v rin: %.3v rout: %.3v zt: %.3v\n", Now(), rtt, min_rtt, rin, rout, zt)
+		fmt.Printf("time: %v rtt: %v/%v rin: %.3v rout: %.3v zt: %.3v\n", Now(), rtt, min_rtt, rin, rout, zt)
 
 		//shouldSwitch(zt, rtt)
 
@@ -238,7 +264,7 @@ func send(
 	pacing := make(chan interface{})
 	go flowPacer(pacing)
 
-	lastSend := time.Now()
+	//lastSend := time.Now()
 	for {
 		seq, vfid := xtcpData.getNextSeq()
 
@@ -255,9 +281,10 @@ func send(
 			fmt.Println(err)
 		}
 
-		fmt.Printf("%v sending at %.3v; fr: %.3v\n", time.Now(), 1500*8.0/(time.Since(lastSend).Seconds()), flowRate)
-		lastSend = time.Now()
+		//fmt.Printf("%v sending at %.3v; fr: %.3v\n", time.Now(), 1500*8.0/(time.Since(lastSend).Seconds()), flowRate)
+		//lastSend = time.Now()
 
+		sendCount++
 		<-pacing
 	}
 
@@ -281,6 +308,7 @@ func handleAck(
 		}
 
 		ackTimes.Add(time.Now(), pkt)
+		recvCount++
 
 		// check for XTCP packet drop
 		if ok := xtcpData.checkXtcpSeq(pkt.VirtFid, pkt.SeqNo); !ok {
