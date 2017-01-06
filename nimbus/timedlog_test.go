@@ -6,72 +6,68 @@ import (
 	"time"
 )
 
-func TestTimeLimit(t *testing.T) {
-	dur := time.Duration(10) * time.Millisecond
-	l := InitTimedLog(dur, 0)
+// the log can store items and retrieve them
+func TestAddOne(t *testing.T) {
+	dummyPacket := Packet{}
+	lg := InitTimedLog(time.Duration(10) * time.Millisecond)
 
-	start := time.Now()
-	for i := time.Now(); i.Before(start.Add(dur * 2)); i = time.Now() {
-		l.Add(time.Now(), intLogVal(42))
-	}
+	tm := time.Now()
+	lg.Add(tm, dummyPacket)
 
-	if s := CurrSpan(l.times); s > dur {
-		t.Errorf("oldest logged: %v ago, expected duration: %v", s, dur)
-	}
-}
-
-func TestChangingTimeLimit(t *testing.T) {
-	startDur := time.Duration(10) * time.Millisecond
-	realDur := time.Duration(15) * time.Millisecond
-	l := InitTimedLog(startDur)
-
-	start := time.Now()
-	for i := time.Now(); i.Before(start.Add(startDur * 5)); i = time.Now() {
-		if i.After(start.Add(realDur)) && l.length != realDur {
-			l.length = realDur
-		}
-
-		l.Add(time.Now(), intLogVal(42))
-	}
-
-	if s := CurrSpan(l.times); s > realDur {
-		t.Errorf("oldest logged: %v ago, expected duration: %v", s, time.Duration(15)*time.Second)
-	}
-
-	if s := CurrSpan(l.times); s < time.Duration(14)*time.Millisecond {
-		t.Errorf("oldest logged: %v ago, expected duration: %v", s, time.Duration(15)*time.Second)
-	}
-}
-
-func TestDelayQuery(t *testing.T) {
-	dur := time.Duration(10) * time.Millisecond
-	l := InitTimedLog(dur)
-
-	start := time.Now()
-	for i := time.Now(); i.Before(start.Add(dur * 2)); i = time.Now() {
-		l.Add(time.Now(), intLogVal(42))
-	}
-
-	_, _, err := l.Latest(time.Duration(14) * time.Millisecond)
-	if err == nil {
-		t.Errorf("expected error: delay too large on delayed latest query")
-		return
-	}
-
-	v, i, err := l.Latest(sl)
+	p, ti, err := lg.Before(time.Now())
 	if err != nil {
-		t.Errorf(fmt.Sprintf("%v", err))
-		return
+		fmt.Println(err)
+		t.Fail()
 	}
 
-	if v.(intLogVal) != 42 {
-		t.Errorf("unexpected value")
-		return
+	if p != dummyPacket {
+		t.Error("stored data incorrect")
 	}
 
-	bound := start.Add(-1 * time.Duration(3) * time.Millisecond)
-	if i.Before(bound) {
-		t.Errorf("past delay value: %v %v", i, bound)
-		return
+	if !ti.Equal(tm) {
+		t.Error("stored timestamp incorrect")
+	}
+}
+
+// the legnth of the log doesn't exceed its time allotment
+func TestTimeLimit(t *testing.T) {
+	lg := InitTimedLog(time.Duration(5) * time.Millisecond)
+
+	tm := time.Now()
+	stopAdd := tm.Add(time.Duration(50) * time.Millisecond)
+	iter := 0
+	for time.Now().Before(stopAdd) {
+		iterPkt := Packet{SeqNo: iter}
+		lg.Add(time.Now(), iterPkt)
+		iter++
+	}
+
+	span := lg.times[len(lg.times)-1].Sub(lg.times[0])
+	if span > lg.length {
+		t.Error("length incorrect:", lg.Len(), span)
+	}
+
+	if lg.Len() < 200 {
+		t.Error("length too short:", lg.Len(), span)
+	}
+}
+
+// the log always has at least 100 items
+func TestCountLimit(t *testing.T) {
+	lg := InitTimedLog(time.Duration(1) * time.Millisecond)
+
+	tm := time.Now()
+	stopAdd := tm.Add(time.Duration(300) * time.Millisecond)
+	iter := 0
+	for time.Now().Before(stopAdd) {
+		iterPkt := Packet{SeqNo: iter}
+		lg.Add(time.Now(), iterPkt)
+		<-time.After(time.Duration(2) * time.Millisecond)
+		iter++
+	}
+
+	if lg.Len() < 100 {
+		span := lg.times[len(lg.times)-1].Sub(lg.times[0])
+		t.Error("length incorrect:", lg.Len(), span)
 	}
 }

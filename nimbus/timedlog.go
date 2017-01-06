@@ -35,17 +35,23 @@ func (l *TimedLog) Add(t time.Time, pkt Packet) {
 	l.mux.Lock()
 	defer l.mux.Unlock()
 
+	if _, ok := l.m[pkt]; ok {
+		err := fmt.Errorf("Appending packet already appended: %v", pkt)
+		panic(err)
+	}
+
 	l.times = append(l.times, t)
 	l.m[pkt] = t
 	l.t[t] = pkt
 
 	if len(l.times) != len(l.m) {
-		panic("TimedLog in inconsistent state")
+		err := fmt.Errorf("TimedLog in inconsistent state: %v %v", len(l.times), len(l.m))
+		panic(err)
 	}
 
-	currSpan := l.times[len(l.times)-1].Sub(l.times[0])
+	lastTime := l.times[len(l.times)-1]
 	// remove older, keep at least 100
-	for len(l.times) > 100 && currSpan > l.length {
+	for len(l.times) > 100 && lastTime.Sub(l.times[0]) > l.length {
 		rem := l.times[0]
 		seq, _ := l.t[rem] // seq
 		delete(l.t, rem)
