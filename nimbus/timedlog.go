@@ -8,13 +8,14 @@ import (
 
 type TimedLog struct {
 	length time.Duration        // constraint on newest time - oldest time
+	slack  time.Duration        // padding entries to support delayed queries
 	m      map[time.Time]LogVal // the map
 	times  []time.Time          // sorted slice of keys in map
 	mux    sync.Mutex           // for thread-safeness
 }
 
-func InitTimedLog(d time.Duration) *TimedLog {
-	return &TimedLog{length: d, m: make(map[time.Time]LogVal), times: make([]time.Time, 0)}
+func InitTimedLog(d time.Duration, s time.Duration) *TimedLog {
+	return &TimedLog{length: d, slack: s, m: make(map[time.Time]LogVal), times: make([]time.Time, 0)}
 }
 
 func CurrSpan(arr []time.Time) time.Duration {
@@ -31,8 +32,20 @@ func (l *TimedLog) UpdateDuration(d time.Duration) {
 	l.length = d
 }
 
+func (l *TimedLog) UpdateSlack(s time.Duration) {
+	l.slack = s
+}
+
 func (l *TimedLog) Len() int {
-	return len(l.m)
+	start := l.times[len(l.times)-1].Add(-1 * l.length)
+	count := 0
+	for _, t := range l.times {
+		if t.After(start) {
+			count++
+		}
+	}
+
+	return count
 }
 
 func (l *TimedLog) Add(t time.Time, v LogVal) {
@@ -46,7 +59,7 @@ func (l *TimedLog) Add(t time.Time, v LogVal) {
 	}
 
 	// remove older
-	for CurrSpan(l.times) > l.length {
+	for CurrSpan(l.times) > l.length+l.slack {
 		rem := l.times[0]
 		delete(l.m, rem)
 		l.times = l.times[1:]
@@ -54,12 +67,12 @@ func (l *TimedLog) Add(t time.Time, v LogVal) {
 }
 
 func (l *TimedLog) Ends() (LogVal, LogVal, error) {
-	old, _, err := l.Oldest()
+	old, _, err := l.Oldest(0)
 	if err != nil {
 		return intLogVal(0), intLogVal(0), err
 	}
 
-	new, _, err := l.Latest()
+	new, _, err := l.Latest(0)
 	if err != nil {
 		return intLogVal(0), intLogVal(0), err
 	}
@@ -67,28 +80,30 @@ func (l *TimedLog) Ends() (LogVal, LogVal, error) {
 	return old, new, nil
 }
 
-func (l *TimedLog) Latest() (LogVal, time.Time, error) {
+func (l *TimedLog) Latest(delay time.Duration) (LogVal, time.Time, error) {
 	l.mux.Lock()
 	defer l.mux.Unlock()
 
-	if len(l.times) > 0 {
-		t := l.times[len(l.times)-1]
-		return l.m[t], t, nil
+	if len(l.times) == 0 {
+		return intLogVal(0), time.Now(), fmt.Errorf("not enough values")
 	}
 
-	return intLogVal(0), time.Now(), fmt.Errorf("not enough values")
+	wanted := l.times[len(l.times)-1].Add(delay * -1)
+	if wanted.Before(l.times[0]) {
+		return intLogVal(0), time.Now(), fmt.Errorf("delay too large")
+	}
+
+	for _, t := range l.times {
+		if t.Equal(wanted) || t.After(wanted) {
+			return l.m[t], t, nil
+		}
+	}
+
+	return intLogVal(0), time.Now(), fmt.Errorf("error")
 }
 
-func (l *TimedLog) Oldest() (LogVal, time.Time, error) {
-	l.mux.Lock()
-	defer l.mux.Unlock()
-
-	if len(l.times) > 0 {
-		t := l.times[0]
-		return l.m[t], t, nil
-	}
-
-	return intLogVal(0), time.Now(), fmt.Errorf("not enough values")
+func (l *TimedLog) Oldest(delay time.Duration) (LogVal, time.Time, error) {
+	return l.Latest(delay + l.length)
 }
 
 func (l *TimedLog) Min() (LogVal, time.Time, error) {

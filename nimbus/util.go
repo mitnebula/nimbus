@@ -17,16 +17,21 @@ func Now() int64 {
 	return time.Now().UnixNano()
 }
 
-func ThroughputFromTimes(times *TimedLog) float64 {
+func ThroughputFromTimes(times *TimedLog, delay time.Duration) (float64, error) {
 	//double rout = ((ack_times.size() - 1) * 1490 * 8.0) / (now - this->ack_times.front().second);
-	oldest, newest, err := times.Ends()
+	newest, _, err := times.Latest(delay)
 	if err != nil {
-		return 0
+		return 0, err
+	}
+
+	oldest, _, err := times.Oldest(delay)
+	if err != nil {
+		return 0, err
 	}
 
 	dur := time.Unix(0, int64(newest.(intLogVal))).Sub(time.Unix(0, int64(oldest.(intLogVal))))
 
-	return float64((times.Len()-1)*1480*8.0) / dur.Seconds()
+	return float64((times.Len()-1)*1480*8.0) / dur.Seconds(), nil
 }
 
 func MinRtt(rtts *Log) time.Duration {

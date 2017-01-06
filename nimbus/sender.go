@@ -50,8 +50,8 @@ func init() {
 	beta = (est_bandwidth / 0.001) * 0.4
 
 	rtts = InitLog(900)
-	sendTimes = InitTimedLog(min_rtt)
-	ackTimes = InitTimedLog(min_rtt)
+	sendTimes = InitTimedLog(min_rtt, 0)
+	ackTimes = InitTimedLog(min_rtt, 0)
 	rin_history = InitLog(500)
 }
 
@@ -92,8 +92,12 @@ func rttUpdater(rtt_history chan int64) {
 			min_rtt = rtt
 			beta = (est_bandwidth / min_rtt.Seconds()) * 0.4
 		}
+
 		sendTimes.UpdateDuration(rtt)
 		ackTimes.UpdateDuration(rtt)
+		sendTimes.UpdateSlack(rtt * 2)
+		ackTimes.UpdateSlack(rtt * 2)
+
 		rtts.Add(durationLogVal(rtt))
 	}
 }
@@ -161,18 +165,27 @@ func flowRateUpdater() {
 		}
 		<-time.After(wait)
 
-		rin := ThroughputFromTimes(sendTimes)
-		rin_history.Add(floatLogVal(rin))
-
-		rout := ThroughputFromTimes(ackTimes)
-
-		zt := est_bandwidth*(rin/rout) - rin
 		lv, err := rtts.Latest()
 		if err != nil {
 			continue
 		}
-
 		rtt := time.Duration(lv.(durationLogVal))
+
+		rin, err := ThroughputFromTimes(sendTimes, rtt)
+		if err != nil {
+			fmt.Println(err, sendTimes.Len(), CurrSpan(sendTimes.times), rtt)
+			continue
+		}
+
+		rin_history.Add(floatLogVal(rin))
+
+		rout, err := ThroughputFromTimes(ackTimes, 0)
+		if err != nil {
+			continue
+
+		}
+
+		zt := est_bandwidth*(rin/rout) - rin
 
 		shouldSwitch(zt, rtt)
 
