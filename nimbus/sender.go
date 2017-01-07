@@ -115,9 +115,9 @@ func exitStats(procExit chan os.Signal, done chan interface{}) {
 }
 
 func output() {
-	for _ = range time.Tick(2 * time.Second) {
+	for _ = range time.Tick(1 * time.Second) {
 		rtt, _ := rtts.Latest()
-		tpt, _, _, err := ThroughputFromTimes(ackTimes, time.Now(), time.Duration(rtt.(durationLogVal)))
+		tpt, _, _, err := ThroughputFromTimes(ackTimes, time.Now(), time.Duration(1)*time.Second)
 		if err != nil {
 			continue
 		}
@@ -243,17 +243,20 @@ func flowRateUpdater() {
 // read the current flow rate and set the pacing channel appropriately
 func flowPacer(pacing chan interface{}) {
 	credit := float64(0.0)
+	lastTime := time.Now()
 	for { // cannot use time.Tick because tick interval is dynamic
-		waitNanoseconds := 1e9 * ONE_PACKET / flowRate // nanoseconds to wait until next packet
-		wt := time.Duration(waitNanoseconds) * time.Nanosecond
-		beforeSleep := time.Now()
-		<-time.After(wt)
-		credit += time.Since(beforeSleep).Seconds() * flowRate
-
-		for credit >= ONE_PACKET {
+		for credit >= 0.0 {
 			pacing <- struct{}{}
 			credit -= ONE_PACKET
 		}
+
+		waitNanoseconds := 1e9 * ONE_PACKET / flowRate // nanoseconds to wait until next packet
+		wt := time.Duration(waitNanoseconds) * time.Nanosecond
+
+		<-time.After(wt)
+		elapsed := time.Since(lastTime)
+		lastTime = time.Now()
+		credit += elapsed.Seconds() * flowRate
 	}
 }
 
