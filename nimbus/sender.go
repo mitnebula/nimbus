@@ -85,21 +85,53 @@ func Sender(ip string, port string) error {
 
 	recvExit := make(chan interface{})
 	rtt_history := make(chan int64)
+	go rttUpdater(rtt_history)
+
+	err = synAckExchange(conn, addr, rtt_history)
+	if err != nil {
+		return err
+	}
 
 	//print on ctrl-c
 	procExit := make(chan os.Signal, 1)
 	signal.Notify(procExit, os.Interrupt)
 
 	go handleAck(conn, addr, rtt_history, recvExit)
-	go rttUpdater(rtt_history)
 	go flowRateUpdater()
-	go output()
+	//go output()
 
 	startTime = time.Now()
 	go send(conn, recvExit)
 	go exitStats(procExit, recvExit)
 
 	<-recvExit
+
+	return nil
+}
+
+func synAckExchange(conn *net.UDPConn, expSrc *net.UDPAddr, rtt_history chan int64) error {
+	syn := Packet{
+		SeqNo:   -1,
+		VirtFid: -1,
+		Echo:    Now(),
+		Payload: "SYN",
+	}
+
+	err := SendAck(conn, syn)
+	if err != nil {
+		return err
+	}
+
+	ack, srcAddr, err := RecvPacket(conn)
+	if err != nil {
+		return err
+	}
+	if srcAddr.String() != expSrc.String() {
+		return fmt.Errorf("got packet from unexpected src: %s; expected %s", srcAddr, expSrc)
+	}
+
+	delay := ack.RecvTime - ack.Echo // one way delay
+	rtt_history <- delay * 2         // multiply one-way delay by 2
 
 	return nil
 }
@@ -284,7 +316,7 @@ func send(
 			fmt.Println(err)
 		}
 
-		//fmt.Printf("%v sending at %.3v; fr: %.3v\n", time.Now(), 1500*8.0/(time.Since(lastSend).Seconds()), flowRate)
+		//fmt.Printf("%v sending (%v, %v)\n", time.Now(), seq, vfid)
 		//lastSend = time.Now()
 
 		sendCount++
@@ -315,6 +347,8 @@ func handleAck(
 
 		// check for XTCP packet drop
 		if ok := xtcpData.checkXtcpSeq(pkt.VirtFid, pkt.SeqNo); !ok {
+			//err := fmt.Errorf("drop %v %v %v %v", pkt.VirtFid, pkt.SeqNo, exp, recvCount)
+			//panic(err)
 			//xtcpData.dropDetected(pkt.VirtFid)
 		} else {
 			xtcpData.increaseXtcpWind(pkt.VirtFid)

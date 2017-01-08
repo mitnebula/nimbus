@@ -42,14 +42,16 @@ func Receiver(port string) error {
 		return err
 	}
 
-	fmt.Println("connected to ", fromAddr)
+	go func() {
+		fmt.Println("connected to ", fromAddr)
 
-	// send first ack
-	ack, _ := handlePacket(pkt)
-	err = SendAck(rcvConn, ack)
-	if err != nil {
-		return err
-	}
+		// send first ack
+		ack, _ := handlePacket(pkt)
+		err = SendAck(rcvConn, ack)
+		if err != nil {
+			panic(err)
+		}
+	}()
 
 	err = receive(rcvConn)
 	if err != nil {
@@ -72,8 +74,6 @@ func receive(conn *net.UDPConn) error {
 			continue
 		}
 
-		//fmt.Println("recvd", pkt.VirtFid, pkt.SeqNo)
-
 		// second return value is error if drop detected
 		ack, _ := handlePacket(pkt)
 
@@ -85,6 +85,8 @@ func receive(conn *net.UDPConn) error {
 }
 
 func handlePacket(pkt Packet) (Packet, error) {
+	//fmt.Println("recvd", pkt.VirtFid, pkt.SeqNo)
+
 	err := error(nil)
 	seq, ok := recv_seqnos[pkt.VirtFid]
 	if seq != pkt.SeqNo-1 && ok {
