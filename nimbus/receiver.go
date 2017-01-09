@@ -5,9 +5,19 @@ import (
 	"net"
 )
 
+type receivedPacket struct {
+	p    Packet
+	from *net.UDPAddr
+}
+
+var acks chan Packet
+var recvd chan receivedPacket
+
 var recv_seqnos map[int]int
 
 func init() {
+	acks = make(chan Packet, 10)
+	recvd = make(chan receivedPacket, 10)
 	recv_seqnos = make(map[int]int)
 }
 
@@ -42,15 +52,15 @@ func Receiver(port string) error {
 		return err
 	}
 
+	go ackSender(rcvConn)
+	go handlePacket(rcvConn)
+
 	go func() {
 		fmt.Println("connected to ", fromAddr)
 
 		// send first ack
-		ack, _ := handlePacket(pkt)
-		err = SendAck(rcvConn, ack)
-		if err != nil {
-			panic(err)
-		}
+		ack, _ := makeAck(pkt)
+		acks <- ack
 	}()
 
 	err = receive(rcvConn)
@@ -68,34 +78,45 @@ func receive(conn *net.UDPConn) error {
 			continue
 		}
 
-		if fromAddr.String() != conn.RemoteAddr().String() {
-			// got packet from some other connection
-			fmt.Println("got unknown packet", fromAddr, conn.RemoteAddr())
-			continue
-		}
-
-		// second return value is error if drop detected
-		ack, _ := handlePacket(pkt)
-
-		err = SendAck(conn, ack)
-		if err != nil {
-			fmt.Println(err)
-		}
+		recvd <- receivedPacket{p: pkt, from: fromAddr}
 	}
 }
 
-func handlePacket(pkt Packet) (Packet, error) {
-	//fmt.Println("recvd", pkt.VirtFid, pkt.SeqNo)
+func handlePacket(conn *net.UDPConn) {
+	for rp := range recvd {
+		pkt := rp.p
+		fromAddr := rp.from
 
+		if fromAddr.String() != conn.RemoteAddr().String() {
+			// got packet from some other connection
+			fmt.Println("got unknown packet", fromAddr, conn.RemoteAddr())
+			return
+		}
+
+		ack, _ := makeAck(pkt)
+		acks <- ack
+	}
+}
+
+func makeAck(pkt Packet) (Packet, error) {
 	err := error(nil)
 	seq, ok := recv_seqnos[pkt.VirtFid]
 	if seq != pkt.SeqNo-1 && ok {
 		err = fmt.Errorf("drop %v %d %d", Now(), pkt.VirtFid, pkt.SeqNo-1)
+		fmt.Println(err)
 	}
 
 	recv_seqnos[pkt.VirtFid] = pkt.SeqNo
-	//fmt.Println(recv_seqnos)
 	pkt.RecvTime = Now()
 
 	return pkt, err
+}
+
+func ackSender(conn *net.UDPConn) {
+	for a := range acks {
+		err := SendAck(conn, a)
+		if err != nil {
+			fmt.Println(err)
+		}
+	}
 }
