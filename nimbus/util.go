@@ -6,15 +6,6 @@ import (
 	"time"
 )
 
-func MakeBytes(size int) string {
-	result := make([]byte, 0, size)
-	for i := 0; i < size; i++ {
-		result = append(result, 'a')
-	}
-
-	return string(result)
-}
-
 func Now() int64 {
 	return time.Now().UnixNano()
 }

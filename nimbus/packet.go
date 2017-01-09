@@ -1,8 +1,6 @@
 package main
 
 import (
-	"bytes"
-	"encoding/gob"
 	"fmt"
 	"net"
 )
@@ -36,22 +34,12 @@ func SendPacket(
 	pkt Packet,
 	size int,
 ) error {
-	var b bytes.Buffer
+	// ip header 20 bytes
+	// udp header 8 bytes
+	padTo := size - 28
+	buf, err := encode(pkt, padTo)
 
-	enc := gob.NewEncoder(&b)
-	err := enc.Encode(pkt)
-	if err != nil {
-		return err
-	}
-
-	pad := size - b.Len() - 54 // 52 = 20 bytes IP hdr + 8 bytes UDP hdr + 26 bytes gob encoding
-	pkt.Payload = MakeBytes(pad)
-	err = enc.Encode(pkt)
-	if err != nil {
-		return err
-	}
-
-	_, err = conn.Write(b.Bytes())
+	_, err = conn.Write(buf)
 	if err != nil {
 		return err
 	}
@@ -63,19 +51,7 @@ func SendAck(
 	conn *net.UDPConn,
 	pkt Packet,
 ) error {
-	var b bytes.Buffer
-
-	err := gob.NewEncoder(&b).Encode(pkt)
-	if err != nil {
-		return err
-	}
-
-	_, err = conn.Write(b.Bytes())
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return SendPacket(conn, pkt, 28)
 }
 
 // helper function to receive and decode a packet
@@ -110,13 +86,10 @@ func Listen(
 func Decode(
 	rcvd receivedBytes,
 ) (Packet, *net.UDPAddr, error) {
-	var pkt Packet
-	buf := rcvd.b
-	err := gob.NewDecoder(bytes.NewReader(buf)).Decode(&pkt)
+	pkt, err := decode(rcvd.b)
 	if err != nil {
 		return Packet{}, nil, err
 	}
 
 	return pkt, rcvd.from, nil
-
 }
