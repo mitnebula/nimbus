@@ -88,7 +88,7 @@ func Sender(ip string, port string) error {
 
 	go handleAck(conn, addr, rtt_history, recvExit)
 	//go flowRateUpdater()
-	//go output()
+	go output()
 
 	startTime = time.Now()
 	go send(conn, recvExit)
@@ -140,13 +140,17 @@ func exitStats(procExit chan os.Signal, done chan interface{}) {
 }
 
 func output() {
-	for _ = range time.Tick(1 * time.Second) {
+	for _ = range time.Tick(2 * time.Second) {
 		rtt, _ := rtts.Latest()
-		tpt, _, _, err := ThroughputFromTimes(ackTimes, time.Now(), time.Duration(1)*time.Second)
+		inTpt, _, _, err := ThroughputFromTimes(sendTimes, time.Now(), time.Duration(2)*time.Second)
 		if err != nil {
 			continue
 		}
-		fmt.Printf("%v : %v %v %v\n", Now(), tpt, time.Duration(rtt.(durationLogVal)), min_rtt)
+		outTpt, _, _, err := ThroughputFromTimes(ackTimes, time.Now(), time.Duration(2)*time.Second)
+		if err != nil {
+			continue
+		}
+		fmt.Printf("%v : %v %v %v %v\n", Now(), inTpt, outTpt, time.Duration(rtt.(durationLogVal)), min_rtt)
 	}
 }
 
