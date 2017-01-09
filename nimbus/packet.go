@@ -15,6 +15,11 @@ type Packet struct {
 	Payload  string // payload (useless)
 }
 
+type receivedBytes struct {
+	b    []byte
+	from *net.UDPAddr
+}
+
 func PrintPacket(pkt Packet) string {
 	return fmt.Sprintf(
 		"{seq %d vfid %d echo %d recv %d size %d}",
@@ -73,25 +78,45 @@ func SendAck(
 	return nil
 }
 
+// helper function to receive and decode a packet
+// use when decoding can be done synchronously
 func RecvPacket(
 	conn *net.UDPConn,
 ) (Packet, *net.UDPAddr, error) {
-	buf := make([]byte, 1500)
-	var pkt Packet
-
-	read, addr, err := conn.ReadFromUDP(buf)
+	rcvd, err := Listen(conn)
 	if err != nil {
 		return Packet{}, nil, err
+	}
+
+	return Decode(rcvd)
+}
+
+func Listen(
+	conn *net.UDPConn,
+) (receivedBytes, error) {
+	buf := make([]byte, 1500)
+	read, addr, err := conn.ReadFromUDP(buf)
+	if err != nil {
+		return receivedBytes{}, err
 	}
 
 	if read == 0 {
-		return Packet{}, nil, fmt.Errorf("read %d bytes instead of full packet", read)
+		return receivedBytes{}, err
 	}
 
-	err = gob.NewDecoder(bytes.NewReader(buf)).Decode(&pkt)
+	return receivedBytes{b: buf, from: addr}, nil
+}
+
+func Decode(
+	rcvd receivedBytes,
+) (Packet, *net.UDPAddr, error) {
+	var pkt Packet
+	buf := rcvd.b
+	err := gob.NewDecoder(bytes.NewReader(buf)).Decode(&pkt)
 	if err != nil {
 		return Packet{}, nil, err
 	}
 
-	return pkt, addr, nil
+	return pkt, rcvd.from, nil
+
 }

@@ -5,23 +5,20 @@ import (
 	"net"
 )
 
-type receivedPacket struct {
-	p    Packet
-	from *net.UDPAddr
-}
-
 var acks chan Packet
-var recvd chan receivedPacket
+var recvd chan receivedBytes
 
 var recv_seqnos map[int]int
 
 func init() {
 	acks = make(chan Packet, 10)
-	recvd = make(chan receivedPacket, 10)
+	recvd = make(chan receivedBytes, 10)
 	recv_seqnos = make(map[int]int)
 }
 
 func Receiver(port string) error {
+	done := make(chan interface{})
+
 	addr, err := net.ResolveUDPAddr("udp4", fmt.Sprintf(":%s", port))
 	if err != nil {
 		return err
@@ -53,39 +50,42 @@ func Receiver(port string) error {
 	}
 
 	go ackSender(rcvConn)
-	go handlePacket(rcvConn)
+	go handlePacket(rcvConn, done)
 
 	go func() {
 		fmt.Println("connected to ", fromAddr)
 
 		// send first ack
-		ack, _ := makeAck(pkt)
+		ack, _ := makeAck(pkt, done)
 		acks <- ack
 	}()
 
-	err = receive(rcvConn)
-	if err != nil {
-		fmt.Println(err)
-	}
+	go receive(rcvConn)
+
+	<-done
+
 	return nil
 }
 
 func receive(conn *net.UDPConn) error {
 	for {
-		pkt, fromAddr, err := RecvPacket(conn)
+		rcvd, err := Listen(conn)
 		if err != nil {
 			fmt.Println(err)
 			continue
 		}
 
-		recvd <- receivedPacket{p: pkt, from: fromAddr}
+		recvd <- rcvd
 	}
 }
 
-func handlePacket(conn *net.UDPConn) {
+func handlePacket(conn *net.UDPConn, done chan interface{}) {
 	for rp := range recvd {
-		pkt := rp.p
-		fromAddr := rp.from
+		pkt, fromAddr, err := Decode(rp)
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
 
 		if fromAddr.String() != conn.RemoteAddr().String() {
 			// got packet from some other connection
@@ -93,17 +93,18 @@ func handlePacket(conn *net.UDPConn) {
 			return
 		}
 
-		ack, _ := makeAck(pkt)
+		ack, _ := makeAck(pkt, done)
 		acks <- ack
 	}
 }
 
-func makeAck(pkt Packet) (Packet, error) {
+func makeAck(pkt Packet, done chan interface{}) (Packet, error) {
 	err := error(nil)
 	seq, ok := recv_seqnos[pkt.VirtFid]
 	if seq != pkt.SeqNo-1 && ok {
 		err = fmt.Errorf("drop %v %d %d", Now(), pkt.VirtFid, pkt.SeqNo-1)
 		fmt.Println(err)
+		done <- struct{}{}
 	}
 
 	recv_seqnos[pkt.VirtFid] = pkt.SeqNo
