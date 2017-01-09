@@ -6,6 +6,20 @@ import (
 	"time"
 )
 
+const (
+	est_bandwidth = 12e6
+
+	alpha = 1
+
+	// rate threshold before becoming more aggressive
+	rate_thresh = 0.9 // units: factor of rin from 500 updates ago. TODO set properly
+)
+
+var beta float64
+
+// beta zero mode timeout
+var betaZeroTimeout int64
+
 func shouldSwitch(zt float64, rtt time.Duration) {
 	oldest, newest, err := rin_history.Ends()
 	if err != nil {

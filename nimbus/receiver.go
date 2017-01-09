@@ -8,12 +8,12 @@ import (
 var acks chan Packet
 var recvd chan receivedBytes
 
-var recv_seqnos map[int]int
+var recv_seqnos map[uint16]uint32
 
 func init() {
 	acks = make(chan Packet, 10)
 	recvd = make(chan receivedBytes, 10)
-	recv_seqnos = make(map[int]int)
+	recv_seqnos = make(map[uint16]uint32)
 }
 
 func Receiver(port string) error {

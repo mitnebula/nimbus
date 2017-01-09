@@ -8,8 +8,8 @@ import (
 )
 
 type Packet struct {
-	SeqNo    int    // packet sequence number
-	VirtFid  int    // virtual flow packet is assigned to
+	SeqNo    uint32 // packet sequence number
+	VirtFid  uint16 // virtual flow packet is assigned to
 	Echo     int64  // time at which packet was sent
 	RecvTime int64  // time packet reached receiver
 	Payload  string // payload (useless)

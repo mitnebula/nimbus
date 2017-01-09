@@ -35,7 +35,7 @@ func TestTimeLimit(t *testing.T) {
 
 	tm := time.Now()
 	stopAdd := tm.Add(time.Duration(50) * time.Millisecond)
-	iter := 0
+	iter := uint32(0)
 	for time.Now().Before(stopAdd) {
 		iterPkt := Packet{SeqNo: iter}
 		lg.Add(time.Now(), iterPkt)
@@ -58,7 +58,7 @@ func TestCountLimit(t *testing.T) {
 
 	tm := time.Now()
 	stopAdd := tm.Add(time.Duration(300) * time.Millisecond)
-	iter := 0
+	iter := uint32(0)
 	for time.Now().Before(stopAdd) {
 		iterPkt := Packet{SeqNo: iter}
 		lg.Add(time.Now(), iterPkt)

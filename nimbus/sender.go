@@ -11,12 +11,6 @@ import (
 )
 
 const (
-	est_bandwidth = 12e6
-	alpha         = 1
-
-	// rate threshold before becoming more aggressive
-	rate_thresh = 0.9 // units: factor of rin from 500 updates ago. TODO set properly
-
 	ONE_PACKET = 1500.0 * 8.0
 )
 
@@ -24,7 +18,6 @@ var flowRate float64
 var flowRateLock sync.Mutex
 
 var min_rtt time.Duration
-var beta float64
 
 // Log is thread-safe
 var rtts *Log
@@ -41,9 +34,6 @@ const (
 )
 
 var flowMode Mode
-
-// beta zero mode timeout
-var betaZeroTimeout int64
 
 // overall statistics
 var sendCount int64
@@ -97,7 +87,7 @@ func Sender(ip string, port string) error {
 	signal.Notify(procExit, os.Interrupt)
 
 	go handleAck(conn, addr, rtt_history, recvExit)
-	go flowRateUpdater()
+	//go flowRateUpdater()
 	//go output()
 
 	startTime = time.Now()
@@ -110,9 +100,10 @@ func Sender(ip string, port string) error {
 }
 
 func synAckExchange(conn *net.UDPConn, expSrc *net.UDPAddr, rtt_history chan int64) error {
+	seq, vfid := xtcpData.getNextSeq()
 	syn := Packet{
-		SeqNo:   -1,
-		VirtFid: -1,
+		SeqNo:   seq,
+		VirtFid: vfid,
 		Echo:    Now(),
 		Payload: "SYN",
 	}
@@ -129,6 +120,8 @@ func synAckExchange(conn *net.UDPConn, expSrc *net.UDPAddr, rtt_history chan int
 	if srcAddr.String() != expSrc.String() {
 		return fmt.Errorf("got packet from unexpected src: %s; expected %s", srcAddr, expSrc)
 	}
+
+	xtcpData.checkXtcpSeq(ack.VirtFid, ack.SeqNo)
 
 	delay := ack.RecvTime - ack.Echo // one way delay
 	rtt_history <- delay * 2         // multiply one-way delay by 2

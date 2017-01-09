@@ -7,12 +7,12 @@ import (
 )
 
 type xtcpDataContainer struct {
-	numVirtualFlows int
-	currVirtFlow    int
-	virtual_cwnds   map[int]float64
-	seq_nos         map[int]int
-	recv_seq_nos    map[int]int
-	drop_time       map[int]int64
+	numVirtualFlows uint16
+	currVirtFlow    uint16
+	virtual_cwnds   map[uint16]float64
+	seq_nos         map[uint16]uint32
+	recv_seq_nos    map[uint16]uint32
+	drop_time       map[uint16]int64
 	mut             sync.Mutex
 }
 
@@ -24,14 +24,14 @@ func init() {
 	xtcpData = &xtcpDataContainer{
 		numVirtualFlows: 10,
 		currVirtFlow:    0,
-		virtual_cwnds:   make(map[int]float64),
-		seq_nos:         make(map[int]int),
-		recv_seq_nos:    make(map[int]int),
-		drop_time:       make(map[int]int64),
+		virtual_cwnds:   make(map[uint16]float64),
+		seq_nos:         make(map[uint16]uint32),
+		recv_seq_nos:    make(map[uint16]uint32),
+		drop_time:       make(map[uint16]int64),
 	}
 
 	xtcpData.setXtcpCwnd(flowRate)
-	for vfid := 0; vfid < xtcpData.numVirtualFlows; vfid++ {
+	for vfid := uint16(0); vfid < xtcpData.numVirtualFlows; vfid++ {
 		xtcpData.seq_nos[vfid] = 0
 		xtcpData.recv_seq_nos[vfid] = 0
 		xtcpData.drop_time[vfid] = 0
@@ -54,7 +54,7 @@ func (xt *xtcpDataContainer) updateRateXtcp(
 	return fr
 }
 
-func (xt *xtcpDataContainer) getNextSeq() (seq int, vfid int) {
+func (xt *xtcpDataContainer) getNextSeq() (seq uint32, vfid uint16) {
 	xt.mut.Lock()
 	defer xt.mut.Unlock()
 
@@ -70,12 +70,12 @@ func (xt *xtcpDataContainer) setXtcpCwnd(flowRate float64) {
 	if setcwndcounter > 1 {
 		panic(false)
 	}
-	for vfid := 0; vfid < xt.numVirtualFlows; vfid++ {
+	for vfid := uint16(0); vfid < xt.numVirtualFlows; vfid++ {
 		xt.virtual_cwnds[vfid] = (0.165 * flowRate) / float64(8*1480*xt.numVirtualFlows)
 	}
 }
 
-func (xt *xtcpDataContainer) dropDetected(vfid int) {
+func (xt *xtcpDataContainer) dropDetected(vfid uint16) {
 	xt.mut.Lock()
 	defer xt.mut.Unlock()
 
@@ -107,7 +107,7 @@ func (xt *xtcpDataContainer) switchToXtcp(flowRate float64) {
 	xt.setXtcpCwnd(flowRate)
 }
 
-func (xt *xtcpDataContainer) checkXtcpSeq(fid int, seq int) (bool, int) {
+func (xt *xtcpDataContainer) checkXtcpSeq(fid uint16, seq uint32) (bool, uint32) {
 	xt.mut.Lock()
 	defer xt.mut.Unlock()
 
@@ -120,7 +120,7 @@ func (xt *xtcpDataContainer) checkXtcpSeq(fid int, seq int) (bool, int) {
 	return seq == expected, expected
 }
 
-func (xt *xtcpDataContainer) increaseXtcpWind(fid int) {
+func (xt *xtcpDataContainer) increaseXtcpWind(fid uint16) {
 	xt.mut.Lock()
 	defer xt.mut.Unlock()
 
