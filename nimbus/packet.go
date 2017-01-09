@@ -39,7 +39,7 @@ func SendPacket(
 		return err
 	}
 
-	pad := size - b.Len() - 40
+	pad := size - b.Len() - 54 // 52 = 20 bytes IP hdr + 8 bytes UDP hdr + 26 bytes gob encoding
 	pkt.Payload = MakeBytes(pad)
 	err = enc.Encode(pkt)
 	if err != nil {
