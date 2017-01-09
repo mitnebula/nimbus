@@ -107,7 +107,7 @@ func (xt *xtcpDataContainer) switchToXtcp(flowRate float64) {
 	xt.setXtcpCwnd(flowRate)
 }
 
-func (xt *xtcpDataContainer) checkXtcpSeq(fid int, seq int) bool {
+func (xt *xtcpDataContainer) checkXtcpSeq(fid int, seq int) (bool, int) {
 	xt.mut.Lock()
 	defer xt.mut.Unlock()
 
@@ -117,7 +117,7 @@ func (xt *xtcpDataContainer) checkXtcpSeq(fid int, seq int) bool {
 	}
 
 	xt.recv_seq_nos[fid] = seq + 1
-	return seq == expected
+	return seq == expected, expected
 }
 
 func (xt *xtcpDataContainer) increaseXtcpWind(fid int) {
