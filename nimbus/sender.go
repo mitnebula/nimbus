@@ -82,6 +82,8 @@ func Sender(ip string, port string) error {
 		return err
 	}
 
+	fmt.Println("connected")
+
 	//print on ctrl-c
 	procExit := make(chan os.Signal, 1)
 	signal.Notify(procExit, os.Interrupt)

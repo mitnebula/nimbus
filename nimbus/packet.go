@@ -16,6 +16,7 @@ type Packet struct {
 type receivedBytes struct {
 	b    []byte
 	from *net.UDPAddr
+	err  error
 }
 
 func PrintPacket(pkt Packet) string {
@@ -59,9 +60,10 @@ func SendAck(
 func RecvPacket(
 	conn *net.UDPConn,
 ) (Packet, *net.UDPAddr, error) {
-	rcvd, err := Listen(conn)
-	if err != nil {
-		return Packet{}, nil, err
+	rcvd := receivedBytes{b: make([]byte, 1500)}
+	Listen(conn, &rcvd)
+	if rcvd.err != nil {
+		return Packet{}, nil, rcvd.err
 	}
 
 	return Decode(rcvd)
@@ -69,27 +71,20 @@ func RecvPacket(
 
 func Listen(
 	conn *net.UDPConn,
-) (receivedBytes, error) {
-	buf := make([]byte, 1500)
-	read, addr, err := conn.ReadFromUDP(buf)
-	if err != nil {
-		return receivedBytes{}, err
-	}
-
-	if read == 0 {
-		return receivedBytes{}, err
-	}
-
-	return receivedBytes{b: buf, from: addr}, nil
+	res *receivedBytes,
+) {
+	_, addr, err := conn.ReadFromUDP(res.b)
+	res.from = addr
+	res.err = err
 }
 
 func Decode(
-	rcvd receivedBytes,
+	r receivedBytes,
 ) (Packet, *net.UDPAddr, error) {
-	pkt, err := decode(rcvd.b)
+	pkt, err := decode(r.b)
 	if err != nil {
 		return Packet{}, nil, err
 	}
 
-	return pkt, rcvd.from, nil
+	return pkt, r.from, nil
 }

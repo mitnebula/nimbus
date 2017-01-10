@@ -113,7 +113,8 @@ func (xt *xtcpDataContainer) checkXtcpSeq(fid uint16, seq uint32) (bool, uint32)
 
 	expected := xt.recv_seq_nos[fid]
 	if seq < expected {
-		panic(false)
+		err := fmt.Errorf("seq out of order: %v %v fid %v", seq, expected, fid)
+		panic(err)
 	}
 
 	xt.recv_seq_nos[fid] = seq + 1

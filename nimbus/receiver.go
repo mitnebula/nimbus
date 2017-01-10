@@ -5,20 +5,23 @@ import (
 	"net"
 )
 
+var rcvd receivedBytes
+var recvd chan interface{}
+var doneDecoding chan interface{}
 var acks chan Packet
-var recvd chan receivedBytes
 
-var recv_seqnos map[uint16]uint32
+var done chan interface{}
 
 func init() {
-	acks = make(chan Packet, 10)
-	recvd = make(chan receivedBytes, 10)
-	recv_seqnos = make(map[uint16]uint32)
+	acks = make(chan Packet, 100)
+	recvd = make(chan interface{}, 100)
+	rcvd = receivedBytes{b: make([]byte, 1500)}
+	doneDecoding = make(chan interface{})
+
+	done = make(chan interface{})
 }
 
 func Receiver(port string) error {
-	done := make(chan interface{})
-
 	addr, err := net.ResolveUDPAddr("udp4", fmt.Sprintf(":%s", port))
 	if err != nil {
 		return err
@@ -50,7 +53,7 @@ func Receiver(port string) error {
 	}
 
 	go ackSender(rcvConn)
-	go handlePacket(rcvConn, done)
+	go handlePacket(rcvConn)
 
 	go func() {
 		fmt.Println("connected to ", fromAddr)
@@ -69,48 +72,49 @@ func Receiver(port string) error {
 
 func receive(conn *net.UDPConn) error {
 	for {
-		rcvd, err := Listen(conn)
-		if err != nil {
-			fmt.Println(err)
-			continue
+		Listen(conn, &rcvd)
+
+		//recvd <- rcvd
+		select {
+		case recvd <- struct{}{}:
+		default:
+			fmt.Println("recvd channel full, dropping packet!")
 		}
 
-		recvd <- rcvd
+		<-doneDecoding
 	}
 }
 
-func handlePacket(conn *net.UDPConn, done chan interface{}) {
-	for rp := range recvd {
-		pkt, fromAddr, err := Decode(rp)
-		if err != nil {
-			fmt.Println(err)
-			continue
+func handlePacket(conn *net.UDPConn) {
+	for _ = range recvd {
+		rp := rcvd
+		if rp.err != nil {
+			fmt.Println("socket", rp.err)
+			break
 		}
 
-		if fromAddr.String() != conn.RemoteAddr().String() {
-			// got packet from some other connection
-			fmt.Println("got unknown packet", fromAddr, conn.RemoteAddr())
-			return
+		pkt, _, err := Decode(rp)
+		doneDecoding <- struct{}{}
+		if err != nil {
+			fmt.Println("decode", err)
+			continue
 		}
 
 		ack, _ := makeAck(pkt, done)
-		acks <- ack
+
+		//acks <- ack
+		select {
+		case acks <- ack:
+		default:
+			fmt.Println("ack channel full, dropping packet!")
+		}
 	}
+	done <- struct{}{}
 }
 
 func makeAck(pkt Packet, done chan interface{}) (Packet, error) {
-	err := error(nil)
-	seq, ok := recv_seqnos[pkt.VirtFid]
-	if seq != pkt.SeqNo-1 && ok {
-		err = fmt.Errorf("drop %v %d %d", Now(), pkt.VirtFid, pkt.SeqNo-1)
-		fmt.Println(err)
-		done <- struct{}{}
-	}
-
-	recv_seqnos[pkt.VirtFid] = pkt.SeqNo
 	pkt.RecvTime = Now()
-
-	return pkt, err
+	return pkt, nil
 }
 
 func ackSender(conn *net.UDPConn) {
@@ -118,6 +122,8 @@ func ackSender(conn *net.UDPConn) {
 		err := SendAck(conn, a)
 		if err != nil {
 			fmt.Println(err)
+			break
 		}
 	}
+	done <- struct{}{}
 }
