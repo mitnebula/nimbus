@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"sync"
 )
 
 type Packet struct {
@@ -17,8 +18,15 @@ type receivedBytes struct {
 	b    []byte
 	from *net.UDPAddr
 	err  error
+	mut  sync.Mutex
 }
 
+//func copyReceivedBytes(dst, src *receivedBytes) {
+//	copy(dst.b, src.b)
+//	dst.from = src.from
+//	dst.err = src.err
+//}
+//
 func PrintPacket(pkt Packet) string {
 	return fmt.Sprintf(
 		"{seq %d vfid %d echo %d recv %d size %d}",
@@ -55,6 +63,14 @@ func SendAck(
 	return SendPacket(conn, pkt, 28)
 }
 
+func SendRaw(
+	conn *net.UDPConn,
+	p *rawAck,
+) error {
+	_, err := conn.Write(p.buf)
+	return err
+}
+
 // helper function to receive and decode a packet
 // use when decoding can be done synchronously
 func RecvPacket(
@@ -66,7 +82,7 @@ func RecvPacket(
 		return Packet{}, nil, rcvd.err
 	}
 
-	return Decode(rcvd)
+	return Decode(&rcvd)
 }
 
 func Listen(
@@ -79,7 +95,7 @@ func Listen(
 }
 
 func Decode(
-	r receivedBytes,
+	r *receivedBytes,
 ) (Packet, *net.UDPAddr, error) {
 	pkt, err := decode(r.b)
 	if err != nil {

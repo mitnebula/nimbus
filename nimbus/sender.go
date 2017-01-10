@@ -146,11 +146,11 @@ func output() {
 		rtt, _ := rtts.Latest()
 		inTpt, _, _, err := ThroughputFromTimes(sendTimes, time.Now(), time.Duration(2)*time.Second)
 		if err != nil {
-			continue
+			inTpt = 0
 		}
 		outTpt, _, _, err := ThroughputFromTimes(ackTimes, time.Now(), time.Duration(2)*time.Second)
 		if err != nil {
-			continue
+			outTpt = 0
 		}
 		fmt.Printf("%v : %v %v %v %v\n", Now(), inTpt, outTpt, time.Duration(rtt.(durationLogVal)), min_rtt)
 	}

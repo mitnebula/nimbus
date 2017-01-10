@@ -37,6 +37,13 @@ func encode(p Packet, size int) ([]byte, error) {
 	return buf.Bytes(), err
 }
 
+func encodeInt64(t int64, buf []byte) error {
+	b := bytes.NewBuffer(buf)
+	b.Reset()
+	err := binary.Write(b, binary.LittleEndian, t)
+	return err
+}
+
 func pad(buf *bytes.Buffer, size int) {
 	// nimbus header 22 bytes
 	payload := bytes.Repeat([]byte("a"), size-22)

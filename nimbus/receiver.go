@@ -3,20 +3,37 @@ package main
 import (
 	"fmt"
 	"net"
+	"sync"
 )
 
-var rcvd receivedBytes
-var recvd chan interface{}
-var doneDecoding chan interface{}
-var acks chan Packet
+type rawAck struct {
+	buf []byte
+	mut sync.Mutex
+}
 
+var rcvd []*receivedBytes
+var recvd chan int // index of rcvd to read
+var ackBuffer []*rawAck
+var acks chan int // index of ackBuffer to read
 var done chan interface{}
 
 func init() {
-	acks = make(chan Packet, 100)
-	recvd = make(chan interface{}, 100)
-	rcvd = receivedBytes{b: make([]byte, 1500)}
-	doneDecoding = make(chan interface{})
+	acks = make(chan int, 10)
+	recvd = make(chan int, 10)
+
+	rcvd = make([]*receivedBytes, 10)
+	for i := 0; i < 10; i++ {
+		rcvd[i] = &receivedBytes{
+			b: make([]byte, 1500),
+		}
+	}
+
+	ackBuffer = make([]*rawAck, 10)
+	for i := 0; i < 10; i++ {
+		ackBuffer[i] = &rawAck{
+			buf: make([]byte, 22),
+		}
+	}
 
 	done = make(chan interface{})
 }
@@ -38,7 +55,7 @@ func Receiver(port string) error {
 	}
 
 	// wait for first packet
-	pkt, fromAddr, err := RecvPacket(rcvConn)
+	syn, fromAddr, err := RecvPacket(rcvConn)
 	if err != nil {
 		return err
 	}
@@ -59,8 +76,11 @@ func Receiver(port string) error {
 		fmt.Println("connected to ", fromAddr)
 
 		// send first ack
-		ack, _ := makeAck(pkt, done)
-		acks <- ack
+		syn.RecvTime = Now()
+		err := SendAck(rcvConn, syn)
+		if err != nil {
+			fmt.Println("synack", err)
+		}
 	}()
 
 	go receive(rcvConn)
@@ -71,40 +91,45 @@ func Receiver(port string) error {
 }
 
 func receive(conn *net.UDPConn) error {
+	curr := 0
+	tot := 0
 	for {
-		Listen(conn, &rcvd)
+		rcvd[curr].mut.Lock()
+		Listen(conn, rcvd[curr])
 
-		//recvd <- rcvd
 		select {
-		case recvd <- struct{}{}:
+		case recvd <- curr:
 		default:
-			fmt.Println("recvd channel full, dropping packet!")
+			fmt.Println("recvd channel full, dropping packet!", curr, tot)
+			panic(false)
 		}
 
-		<-doneDecoding
+		curr = (curr + 1) % len(rcvd)
+		tot += 1
 	}
 }
 
 func handlePacket(conn *net.UDPConn) {
-	for _ = range recvd {
-		rp := rcvd
+	for idx := range recvd {
+		rp := rcvd[idx]
 		if rp.err != nil {
 			fmt.Println("socket", rp.err)
 			break
 		}
 
-		pkt, _, err := Decode(rp)
-		doneDecoding <- struct{}{}
-		if err != nil {
-			fmt.Println("decode", err)
-			continue
-		}
+		// copy header (first 22 bytes) to ack
+		hdr := rp.b[:22]
 
-		ack, _ := makeAck(pkt, done)
+		ackBuffer[idx].mut.Lock()
+		copy(ackBuffer[idx].buf, hdr)
+		rp.mut.Unlock()
 
-		//acks <- ack
+		// make ack without deserializing
+		// directly write RecvTime to nimbus hdr
+		makeAck(ackBuffer[idx])
+
 		select {
-		case acks <- ack:
+		case acks <- idx:
 		default:
 			fmt.Println("ack channel full, dropping packet!")
 		}
@@ -112,14 +137,19 @@ func handlePacket(conn *net.UDPConn) {
 	done <- struct{}{}
 }
 
-func makeAck(pkt Packet, done chan interface{}) (Packet, error) {
-	pkt.RecvTime = Now()
-	return pkt, nil
+func makeAck(ack *rawAck) {
+	recvTime := Now()
+
+	// write recvTime to bytes 14 - 21
+	buf := ack.buf[14:]
+	encodeInt64(recvTime, buf)
 }
 
 func ackSender(conn *net.UDPConn) {
 	for a := range acks {
-		err := SendAck(conn, a)
+		ack := ackBuffer[a]
+		err := SendRaw(conn, ack)
+		ack.mut.Unlock()
 		if err != nil {
 			fmt.Println(err)
 			break
