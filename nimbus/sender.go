@@ -175,19 +175,19 @@ func rttUpdater(rtt_history chan int64) {
 func flowPacer(pacing chan interface{}) {
 	credit := float64(0.0)
 	lastTime := time.Now()
-	for { // cannot use time.Tick because tick interval is dynamic
+	for _ = range time.Tick(time.Duration(100) * time.Nanosecond) {
 		for credit >= 0.0 {
 			pacing <- struct{}{}
 			credit -= ONE_PACKET
 		}
 
-		waitNanoseconds := 1e9 * ONE_PACKET / flowRate // nanoseconds to wait until next packet
-		wt := time.Duration(waitNanoseconds) * time.Nanosecond
-
-		<-time.After(wt)
 		elapsed := time.Since(lastTime)
 		lastTime = time.Now()
 		credit += elapsed.Seconds() * flowRate
+		if credit > 100*ONE_PACKET {
+			fmt.Println("credit", credit, "last sleep", elapsed)
+			panic(false)
+		}
 	}
 }
 

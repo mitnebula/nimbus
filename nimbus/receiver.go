@@ -18,18 +18,18 @@ var acks chan int // index of ackBuffer to read
 var done chan interface{}
 
 func init() {
-	acks = make(chan int, 10)
-	recvd = make(chan int, 10)
+	acks = make(chan int, 100)
+	recvd = make(chan int, 100)
 
-	rcvd = make([]*receivedBytes, 10)
-	for i := 0; i < 10; i++ {
+	rcvd = make([]*receivedBytes, 100)
+	for i := 0; i < 100; i++ {
 		rcvd[i] = &receivedBytes{
 			b: make([]byte, 1500),
 		}
 	}
 
-	ackBuffer = make([]*rawAck, 10)
-	for i := 0; i < 10; i++ {
+	ackBuffer = make([]*rawAck, 100)
+	for i := 0; i < 100; i++ {
 		ackBuffer[i] = &rawAck{
 			buf: make([]byte, 22),
 		}

@@ -21,12 +21,6 @@ type receivedBytes struct {
 	mut  sync.Mutex
 }
 
-//func copyReceivedBytes(dst, src *receivedBytes) {
-//	copy(dst.b, src.b)
-//	dst.from = src.from
-//	dst.err = src.err
-//}
-//
 func PrintPacket(pkt Packet) string {
 	return fmt.Sprintf(
 		"{seq %d vfid %d echo %d recv %d size %d}",
