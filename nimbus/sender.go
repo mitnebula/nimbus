@@ -184,7 +184,7 @@ func flowPacer(pacing chan interface{}) {
 		elapsed := time.Since(lastTime)
 		lastTime = time.Now()
 		credit += elapsed.Seconds() * flowRate
-		if credit > 100 * ONE_PACKET {
+		if credit > 100*ONE_PACKET {
 			credit = 100 * ONE_PACKET
 		}
 
@@ -192,10 +192,10 @@ func flowPacer(pacing chan interface{}) {
 		sumBurst = sumBurst + burst
 		countBurst = countBurst + 1
 		if burst > maxBurst {
-		   maxBurst = burst
+			maxBurst = burst
 		}
-		if time.Since(lastStatTime) > time.Duration(1) * time.Second {
-			fmt.Printf("Current burst = %d, Avg burst = %d, Max burst = %d pkts\n", burst, sumBurst / countBurst, maxBurst)
+		if time.Since(lastStatTime) > time.Duration(1)*time.Second {
+			fmt.Printf("Current burst = %d, Avg burst = %d, Max burst = %d pkts\n", burst, sumBurst/countBurst, maxBurst)
 			lastStatTime = lastTime
 		}
 
