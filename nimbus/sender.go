@@ -43,7 +43,7 @@ var startTime time.Time
 func init() {
 	flowMode = DELAY
 
-	flowRate = 96e6
+	flowRate = 100e6
 	min_rtt = time.Duration(999) * time.Hour
 
 	// (est_bandwidth / min_rtt) * C where 0 < C < 1, use C = 0.4
@@ -174,18 +174,34 @@ func rttUpdater(rtt_history chan int64) {
 // read the current flow rate and set the pacing channel appropriately
 func flowPacer(pacing chan interface{}) {
 	credit := float64(ONE_PACKET)
+	maxBurst := int64(0)
+	sumBurst := int64(0)
+	countBurst := int64(0)
 	lastTime := time.Now()
-	for _ = range time.Tick(time.Duration(100) * time.Nanosecond) {
-		if credit >= ONE_PACKET {
-			pacing <- struct{}{}
-			credit -= ONE_PACKET
-		}
+	lastStatTime := lastTime
 
+	for _ = range time.Tick(time.Duration(100) * time.Microsecond) {
 		elapsed := time.Since(lastTime)
 		lastTime = time.Now()
 		credit += elapsed.Seconds() * flowRate
-		if credit > 1*ONE_PACKET {
-			credit = 1 * ONE_PACKET
+		if credit > 100 * ONE_PACKET {
+			credit = 100 * ONE_PACKET
+		}
+
+		burst := int64(credit / ONE_PACKET)
+		sumBurst = sumBurst + burst
+		countBurst = countBurst + 1
+		if burst > maxBurst {
+		   maxBurst = burst
+		}
+		if time.Since(lastStatTime) > time.Duration(1) * time.Second {
+			fmt.Printf("Current burst = %d, Avg burst = %d, Max burst = %d pkts\n", burst, sumBurst / countBurst, maxBurst)
+			lastStatTime = lastTime
+		}
+
+		for credit >= ONE_PACKET {
+			pacing <- struct{}{}
+			credit -= ONE_PACKET
 		}
 	}
 }
