@@ -43,7 +43,7 @@ var startTime time.Time
 func init() {
 	flowMode = DELAY
 
-	flowRate = 48e6
+	flowRate = 96e6
 	min_rtt = time.Duration(999) * time.Hour
 
 	// (est_bandwidth / min_rtt) * C where 0 < C < 1, use C = 0.4
@@ -173,10 +173,10 @@ func rttUpdater(rtt_history chan int64) {
 
 // read the current flow rate and set the pacing channel appropriately
 func flowPacer(pacing chan interface{}) {
-	credit := float64(0.0)
+	credit := float64(ONE_PACKET)
 	lastTime := time.Now()
 	for _ = range time.Tick(time.Duration(100) * time.Nanosecond) {
-		for credit >= 0.0 {
+		if credit >= ONE_PACKET {
 			pacing <- struct{}{}
 			credit -= ONE_PACKET
 		}
