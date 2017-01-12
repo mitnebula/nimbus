@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	//	"math"
+	//"math"
 	"net"
 	"os"
 	"os/signal"
@@ -184,9 +184,8 @@ func flowPacer(pacing chan interface{}) {
 		elapsed := time.Since(lastTime)
 		lastTime = time.Now()
 		credit += elapsed.Seconds() * flowRate
-		if credit > 100*ONE_PACKET {
-			fmt.Println("credit", credit, "last sleep", elapsed)
-			panic(false)
+		if credit > 1*ONE_PACKET {
+			credit = 1 * ONE_PACKET
 		}
 	}
 }
