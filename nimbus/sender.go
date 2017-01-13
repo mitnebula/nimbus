@@ -94,9 +94,7 @@ func Sender(ip string, port string) error {
 
 	startTime = time.Now()
 	go send(conn, recvExit)
-	go exitStats(procExit, recvExit)
-
-	<-recvExit
+	exitStats(procExit, recvExit)
 
 	return nil
 }
@@ -132,13 +130,15 @@ func synAckExchange(conn *net.UDPConn, expSrc *net.UDPAddr, rtt_history chan int
 }
 
 func exitStats(procExit chan os.Signal, done chan interface{}) {
-	<-procExit
+	select {
+	case <-procExit:
+	case <-done:
+	}
 	elapsed := time.Since(startTime)
 	totalBytes := float64(sendCount * ONE_PACKET)
 	fmt.Printf("Sent: throughput %.4v; %v packets in %v\n", totalBytes/elapsed.Seconds(), sendCount, elapsed)
 	totalBytes = float64(recvCount * ONE_PACKET)
 	fmt.Printf("Received: throughput %.4v; %v packets in %v\n", totalBytes/elapsed.Seconds(), recvCount, elapsed)
-	done <- struct{}{}
 }
 
 func output() {
