@@ -1,51 +1,21 @@
 package main
 
 import (
-	"fmt"
+	//"fmt"
 	"math"
 	"time"
 )
 
 const (
-	est_bandwidth = 12e6
+	est_bandwidth = 120e6
 
 	alpha = 1
-
-	// rate threshold before becoming more aggressive
-	rate_thresh = 0.9 // units: factor of rin from 500 updates ago. TODO set properly
 )
 
 var beta float64
 
-// beta zero mode timeout
-var betaZeroTimeout int64
-
 func shouldSwitch(zt float64, rtt time.Duration) {
-	oldest, newest, err := rin_history.Ends()
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	old_rin := float64(oldest.(floatLogVal))
-	rin := float64(newest.(floatLogVal))
-
-	if flowMode != XTCP && flowRate < old_rin*0.9 {
-		if flowMode == DELAY {
-			fmt.Println(Now(), "DELAY -> BETAZERO")
-			flowMode = BETAZERO
-		} else if flowMode == BETAZERO {
-			fmt.Println(Now(), "BETAZERO -> XTCP")
-			xtcpData.switchToXtcp(flowRate)
-		}
-	} else if flowMode == BETAZERO && Now() > betaZeroTimeout {
-		fmt.Println(Now(), "BETAZERO -> DELAY")
-		flowMode = DELAY
-	} else if flowMode == XTCP && rin < flowRate-zt {
-		fmt.Println(Now(), "XTCP -> BETAZERO")
-		flowMode = BETAZERO
-		betaZeroTimeout = Now() + rtt.Nanoseconds()*4
-	}
+	return // TODO switching
 }
 
 func updateRateDelay(
@@ -56,7 +26,7 @@ func updateRateDelay(
 	rtt time.Duration,
 ) float64 {
 	beta = (rin / rtt.Seconds()) * 0.33
-	newRate := rin + alpha*(est_bandwidth-zt-rin) - beta*(rtt.Seconds()-(1.25*min_rtt.Seconds()))
+	newRate := rin + alpha*(est_bandwidth-zt-rin) - (beta/2)*(rtt.Seconds()-(1.25*min_rtt.Seconds()))
 
 	minRate := 1500 * 8.0 / min_rtt.Seconds() // send at least 1 packet per rtt
 	if newRate < minRate || math.IsNaN(newRate) {
@@ -99,7 +69,7 @@ func flowRateUpdater() {
 
 		zt := est_bandwidth*(rin/rout) - rin
 
-		//fmt.Printf("time: %v rtt: %v/%v rin: %.3v rout: %.3v zt: %.3v\n", Now(), rtt, min_rtt, rin, rout, zt)
+		//fmt.Printf("time: %v rtt: %v/%v rin: %.3v rout: %.3v zt: %.3v", Now(), rtt, min_rtt, rin, rout, zt)
 
 		//shouldSwitch(zt, rtt)
 
@@ -110,6 +80,7 @@ func flowRateUpdater() {
 			flowRate = updateRateDelay(flowRate, est_bandwidth, rin, zt, rtt)
 		case XTCP:
 			flowRate = xtcpData.updateRateXtcp(rtt)
+			panic(false)
 		}
 
 		if flowRate < 0 {

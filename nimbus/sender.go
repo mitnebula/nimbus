@@ -43,7 +43,7 @@ var startTime time.Time
 func init() {
 	flowMode = DELAY
 
-	flowRate = 100e6
+	flowRate = 1e6
 	min_rtt = time.Duration(999) * time.Hour
 
 	// (est_bandwidth / min_rtt) * C where 0 < C < 1, use C = 0.4
@@ -89,7 +89,7 @@ func Sender(ip string, port string) error {
 	signal.Notify(procExit, os.Interrupt)
 
 	go handleAck(conn, addr, rtt_history, recvExit)
-	//go flowRateUpdater()
+	go flowRateUpdater()
 	go output()
 
 	startTime = time.Now()
@@ -178,7 +178,7 @@ func flowPacer(pacing chan interface{}) {
 	sumBurst := int64(0)
 	countBurst := int64(0)
 	lastTime := time.Now()
-	lastStatTime := lastTime
+	//lastStatTime := lastTime
 
 	for _ = range time.Tick(time.Duration(100) * time.Microsecond) {
 		elapsed := time.Since(lastTime)
@@ -194,10 +194,10 @@ func flowPacer(pacing chan interface{}) {
 		if burst > maxBurst {
 			maxBurst = burst
 		}
-		if time.Since(lastStatTime) > time.Duration(1)*time.Second {
-			fmt.Printf("Current burst = %d, Avg burst = %d, Max burst = %d pkts\n", burst, sumBurst/countBurst, maxBurst)
-			lastStatTime = lastTime
-		}
+		//if time.Since(lastStatTime) > time.Duration(1)*time.Second {
+		//	fmt.Printf("Current burst = %d, Avg burst = %d, Max burst = %d pkts\n", burst, sumBurst/countBurst, maxBurst)
+		//	lastStatTime = lastTime
+		//}
 
 		for credit >= ONE_PACKET {
 			pacing <- struct{}{}
@@ -256,13 +256,16 @@ func handleAck(
 			fmt.Println(fmt.Errorf("got packet from unexpected src: %s; expected %s", srcAddr, expSrc))
 		}
 
-		ackTimes.Add(time.Now(), pkt)
+		recvTime := time.Unix(0, pkt.RecvTime)
+		ackTimes.Add(recvTime, pkt)
 		recvCount++
 
 		// check for XTCP packet drop
 		if ok, exp := xtcpData.checkXtcpSeq(pkt.VirtFid, pkt.SeqNo); !ok {
 			err := fmt.Errorf("drop %v %v %v %v", pkt.VirtFid, pkt.SeqNo, exp, recvCount)
-			panic(err)
+			fmt.Println(err)
+			done <- struct{}{}
+			break
 			//xtcpData.dropDetected(pkt.VirtFid)
 		} else {
 			xtcpData.increaseXtcpWind(pkt.VirtFid)
