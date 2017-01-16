@@ -41,15 +41,15 @@ var recvCount int64
 var startTime time.Time
 
 func init() {
-	flowMode = DELAY
+	flowMode = XTCP
 
-	flowRate = 1e6
+	flowRate = 90e6
 	min_rtt = time.Duration(999) * time.Hour
 
 	// (est_bandwidth / min_rtt) * C where 0 < C < 1, use C = 0.4
 	beta = (flowRate / 0.001) * 0.33
 
-	rtts = InitLog(900)
+	rtts = InitLog(500)
 	sendTimes = InitTimedLog(min_rtt)
 	ackTimes = InitTimedLog(min_rtt)
 	rin_history = InitLog(500)
@@ -89,8 +89,8 @@ func Sender(ip string, port string) error {
 	signal.Notify(procExit, os.Interrupt)
 
 	go handleAck(conn, addr, rtt_history, recvExit)
-	go flowRateUpdater()
-	go output()
+	//go flowRateUpdater()
+	//go output()
 
 	startTime = time.Now()
 	go send(conn, recvExit)
@@ -183,6 +183,12 @@ func flowPacer(pacing chan interface{}) {
 	for _ = range time.Tick(time.Duration(100) * time.Microsecond) {
 		elapsed := time.Since(lastTime)
 		lastTime = time.Now()
+
+		rttval, err := rtts.Latest()
+		if err == nil {
+			flowRate = xtcpData.updateRateXtcp(time.Duration(rttval.(durationLogVal)))
+		}
+
 		credit += elapsed.Seconds() * flowRate
 		if credit > 100*ONE_PACKET {
 			credit = 100 * ONE_PACKET
@@ -261,12 +267,8 @@ func handleAck(
 		recvCount++
 
 		// check for XTCP packet drop
-		if ok, exp := xtcpData.checkXtcpSeq(pkt.VirtFid, pkt.SeqNo); !ok {
-			err := fmt.Errorf("drop %v %v %v %v", pkt.VirtFid, pkt.SeqNo, exp, recvCount)
-			fmt.Println(err)
-			done <- struct{}{}
-			break
-			//xtcpData.dropDetected(pkt.VirtFid)
+		if ok := xtcpData.checkXtcpSeq(pkt.VirtFid, pkt.SeqNo); !ok {
+			xtcpData.dropDetected(pkt.VirtFid)
 		} else {
 			xtcpData.increaseXtcpWind(pkt.VirtFid)
 		}

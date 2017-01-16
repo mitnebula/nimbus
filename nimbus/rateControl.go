@@ -37,6 +37,38 @@ func updateRateDelay(
 	return newRate
 }
 
+func measure() (rin float64, rout float64, zt float64, avgRtt time.Duration, err error) {
+	lv, err := rtts.Latest()
+	if err != nil {
+		return
+	}
+	rtt := time.Duration(lv.(durationLogVal))
+
+	rout, oldPkt, newPkt, err := ThroughputFromTimes(ackTimes, time.Now(), rtt)
+	if err != nil {
+		return
+	}
+
+	rin, err = ThroughputFromPackets(sendTimes, oldPkt, newPkt)
+	if err != nil {
+		return
+	}
+
+	rin_history.Add(floatLogVal(rin))
+
+	zt = est_bandwidth*(rin/rout) - rin
+
+	//fmt.Printf("time: %v rtt: %v/%v rin: %.3v rout: %.3v zt: %.3v", Now(), rtt, min_rtt, rin, rout, zt)
+
+	lv, err = rtts.Avg()
+	if err != nil {
+		avgRtt = rtt
+	}
+	avgRtt = time.Duration(lv.(durationLogVal))
+
+	return
+}
+
 func flowRateUpdater() {
 	for {
 		var wait time.Duration
@@ -49,27 +81,10 @@ func flowRateUpdater() {
 		}
 		<-time.After(wait)
 
-		lv, err = rtts.Latest()
+		rin, _, zt, rtt, err := measure()
 		if err != nil {
 			continue
 		}
-		rtt := time.Duration(lv.(durationLogVal))
-
-		rout, oldPkt, newPkt, err := ThroughputFromTimes(ackTimes, time.Now(), rtt)
-		if err != nil {
-			continue
-		}
-
-		rin, err := ThroughputFromPackets(sendTimes, oldPkt, newPkt)
-		if err != nil {
-			continue
-		}
-
-		rin_history.Add(floatLogVal(rin))
-
-		zt := est_bandwidth*(rin/rout) - rin
-
-		//fmt.Printf("time: %v rtt: %v/%v rin: %.3v rout: %.3v zt: %.3v", Now(), rtt, min_rtt, rin, rout, zt)
 
 		//shouldSwitch(zt, rtt)
 
@@ -78,9 +93,6 @@ func flowRateUpdater() {
 		switch flowMode {
 		case DELAY:
 			flowRate = updateRateDelay(flowRate, est_bandwidth, rin, zt, rtt)
-		case XTCP:
-			flowRate = xtcpData.updateRateXtcp(rtt)
-			panic(false)
 		}
 
 		if flowRate < 0 {
