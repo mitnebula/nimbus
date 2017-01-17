@@ -25,7 +25,7 @@ func init() {
 	lastPrint = time.Now()
 	setcwndcounter = 0
 	xtcpData = &xtcpDataContainer{
-		numVirtualFlows: 1,
+		numVirtualFlows: 10,
 		currVirtFlow:    0,
 		virtual_cwnds:   make(map[uint16]float64),
 		seq_nos:         make(map[uint16]uint32),
@@ -54,7 +54,7 @@ func (xt *xtcpDataContainer) updateRateXtcp(
 
 	res := fr * ONE_PACKET / rtt.Seconds()
 	if time.Since(lastPrint) > time.Duration(40)*time.Millisecond {
-		fmt.Printf("time: %v xtcp_vcwnd: %v xtcp_curr_rate: %v rtt: %v\n", time.Since(startTime).Seconds(), fr, res, rtt)
+		//fmt.Printf("time: %v xtcp_vcwnd: %v xtcp_curr_rate: %v rtt: %v\n", time.Since(startTime).Seconds(), fr, res, rtt)
 		lastPrint = time.Now()
 	}
 	return res
@@ -143,6 +143,6 @@ func (xt *xtcpDataContainer) increaseXtcpWind(fid uint16) {
 	denom := xt.virtual_cwnds[fid] * float64(xt.numVirtualFlows)
 
 	for f, _ := range xt.virtual_cwnds {
-		xt.virtual_cwnds[f] += 1.0 / denom
+		xt.virtual_cwnds[f] += 2.0 / denom
 	}
 }
