@@ -14,12 +14,24 @@ type Packet struct {
 	Payload  string // payload (useless)
 }
 
+type rawPacket struct {
+	buf []byte
+	mut sync.Mutex
+}
+
 type receivedBytes struct {
 	b    []byte
 	from *net.UDPAddr
 	err  error
 	mut  sync.Mutex
 }
+
+type packetOps interface {
+	Listen(conn *net.UDPConn, res *receivedBytes)
+	SendRaw(conn *net.UDPConn, p *rawPacket) error
+}
+
+type realPacketOps struct{}
 
 func PrintPacket(pkt Packet) string {
 	return fmt.Sprintf(
@@ -32,17 +44,25 @@ func PrintPacket(pkt Packet) string {
 	)
 }
 
+func MakeRawPacket(
+	pkt Packet,
+	size int,
+) (*rawPacket, error) {
+	// ip header 20 bytes
+	// udp header 8 bytes
+	padTo := size - 28
+	b, err := encode(pkt, padTo)
+	return &rawPacket{buf: b}, err
+}
+
 func SendPacket(
 	conn *net.UDPConn,
 	pkt Packet,
 	size int,
 ) error {
-	// ip header 20 bytes
-	// udp header 8 bytes
-	padTo := size - 28
-	buf, err := encode(pkt, padTo)
+	rp, err := MakeRawPacket(pkt, size)
 
-	_, err = conn.Write(buf)
+	_, err = conn.Write(rp.buf)
 	if err != nil {
 		return err
 	}
@@ -57,9 +77,17 @@ func SendAck(
 	return SendPacket(conn, pkt, 28)
 }
 
+func (r realPacketOps) SendRaw(
+	conn *net.UDPConn,
+	p *rawPacket,
+) error {
+	_, err := conn.Write(p.buf)
+	return err
+}
+
 func SendRaw(
 	conn *net.UDPConn,
-	p *rawAck,
+	p *rawPacket,
 ) error {
 	_, err := conn.Write(p.buf)
 	return err
@@ -77,6 +105,15 @@ func RecvPacket(
 	}
 
 	return Decode(&rcvd)
+}
+
+func (r realPacketOps) Listen(
+	conn *net.UDPConn,
+	res *receivedBytes,
+) {
+	_, addr, err := conn.ReadFromUDP(res.b)
+	res.from = addr
+	res.err = err
 }
 
 func Listen(

@@ -49,7 +49,7 @@ func init() {
 	// (est_bandwidth / min_rtt) * C where 0 < C < 1, use C = 0.4
 	beta = (flowRate / 0.001) * 0.33
 
-	rtts = InitLog(500)
+	rtts = InitLog(180)
 	sendTimes = InitTimedLog(min_rtt)
 	ackTimes = InitTimedLog(min_rtt)
 	rin_history = InitLog(500)
@@ -174,19 +174,20 @@ func rttUpdater(rtt_history chan int64) {
 // read the current flow rate and set the pacing channel appropriately
 func flowPacer(pacing chan interface{}) {
 	credit := float64(ONE_PACKET)
-	maxBurst := int64(0)
-	sumBurst := int64(0)
-	countBurst := int64(0)
 	lastTime := time.Now()
-	//lastStatTime := lastTime
+	var avgRtt time.Duration
 
 	for _ = range time.Tick(time.Duration(100) * time.Microsecond) {
 		elapsed := time.Since(lastTime)
 		lastTime = time.Now()
 
-		rttval, err := rtts.Latest()
+		lv, err := rtts.Avg()
+		if err != nil {
+			continue
+		}
+		avgRtt = time.Duration(lv.(durationLogVal))
 		if err == nil {
-			flowRate = xtcpData.updateRateXtcp(time.Duration(rttval.(durationLogVal)))
+			flowRate = xtcpData.updateRateXtcp(avgRtt)
 		}
 
 		credit += elapsed.Seconds() * flowRate
@@ -194,22 +195,17 @@ func flowPacer(pacing chan interface{}) {
 			credit = 100 * ONE_PACKET
 		}
 
-		burst := int64(credit / ONE_PACKET)
-		sumBurst = sumBurst + burst
-		countBurst = countBurst + 1
-		if burst > maxBurst {
-			maxBurst = burst
-		}
-		//if time.Since(lastStatTime) > time.Duration(1)*time.Second {
-		//	fmt.Printf("Current burst = %d, Avg burst = %d, Max burst = %d pkts\n", burst, sumBurst/countBurst, maxBurst)
-		//	lastStatTime = lastTime
-		//}
-
 		for credit >= ONE_PACKET {
 			pacing <- struct{}{}
 			credit -= ONE_PACKET
 		}
 	}
+}
+
+func stampTime(pkt *rawPacket, t int64) {
+	// write Echo to bytes 6 - 13
+	buf := pkt.buf[6:13]
+	encodeInt64(t, buf)
 }
 
 func send(
@@ -219,25 +215,21 @@ func send(
 	pacing := make(chan interface{})
 	go flowPacer(pacing)
 
-	//lastSend := time.Now()
 	for {
 		seq, vfid := xtcpData.getNextSeq()
 
 		pkt := Packet{
 			SeqNo:   seq,
 			VirtFid: vfid,
-			Echo:    Now(),
-			Payload: "",
 		}
-
-		sendTimes.Add(time.Now(), pkt)
-		err := SendPacket(conn, pkt, 1500)
+		rp, err := MakeRawPacket(pkt, 1500)
 		if err != nil {
 			fmt.Println(err)
 		}
 
-		//fmt.Printf("%v sending (%v, %v)\n", time.Now(), seq, vfid)
-		//lastSend = time.Now()
+		stampTime(rp, Now())
+		SendRaw(conn, rp)
+		sendTimes.Add(time.Now(), pkt)
 
 		sendCount++
 		<-pacing
@@ -253,18 +245,14 @@ func handleAck(
 	rtt_history chan int64,
 	done chan interface{},
 ) {
+	pktBuf := &receivedBytes{b: make([]byte, 50)}
 	for {
-		pkt, srcAddr, err := RecvPacket(conn)
+		Listen(conn, pktBuf)
+		pkt, _, err := Decode(pktBuf)
 		if err != nil {
 			fmt.Println(err)
+			continue
 		}
-		if srcAddr.String() != expSrc.String() {
-			fmt.Println(fmt.Errorf("got packet from unexpected src: %s; expected %s", srcAddr, expSrc))
-		}
-
-		recvTime := time.Unix(0, pkt.RecvTime)
-		ackTimes.Add(recvTime, pkt)
-		recvCount++
 
 		// check for XTCP packet drop
 		if ok := xtcpData.checkXtcpSeq(pkt.VirtFid, pkt.SeqNo); !ok {
@@ -273,9 +261,11 @@ func handleAck(
 			xtcpData.increaseXtcpWind(pkt.VirtFid)
 		}
 
-		delay := pkt.RecvTime - pkt.Echo // one way delay
+		recvTime := time.Unix(0, pkt.RecvTime)
+		ackTimes.Add(recvTime, pkt)
+		recvCount++
 
-		//fmt.Printf("%v recv ack (%v,%v) rt %v s_ech %v rtt %v\n", time.Now(), pkt.VirtFid, pkt.SeqNo, pkt.RecvTime, pkt.Echo, delay*2)
-		rtt_history <- delay * 2 // multiply one-way delay by 2
+		delay := pkt.RecvTime - pkt.Echo // one way delay
+		rtt_history <- delay * 2         // multiply one-way delay by 2
 	}
 }

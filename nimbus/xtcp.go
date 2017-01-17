@@ -19,7 +19,10 @@ type xtcpDataContainer struct {
 var xtcpData *xtcpDataContainer
 var setcwndcounter int
 
+var lastPrint time.Time
+
 func init() {
+	lastPrint = time.Now()
 	setcwndcounter = 0
 	xtcpData = &xtcpDataContainer{
 		numVirtualFlows: 1,
@@ -50,7 +53,10 @@ func (xt *xtcpDataContainer) updateRateXtcp(
 	}
 
 	res := fr * ONE_PACKET / rtt.Seconds()
-	fmt.Printf("time: %v xtcp_vcwnd: %v xtcp_curr_rate: %v rtt: %v\n", time.Since(startTime).Seconds(), fr, res, rtt)
+	if time.Since(lastPrint) > time.Duration(40)*time.Millisecond {
+		fmt.Printf("time: %v xtcp_vcwnd: %v xtcp_curr_rate: %v rtt: %v\n", time.Since(startTime).Seconds(), fr, res, rtt)
+		lastPrint = time.Now()
+	}
 	return res
 }
 

@@ -45,8 +45,8 @@ func TestDecode(t *testing.T) {
 
 func TestEncodeRecvTime(t *testing.T) {
 	hdr := bytes.Repeat([]byte{0}, 22)
-	ack := rawAck{buf: hdr}
-	makeAck(&ack)
+	ack := rawPacket{buf: hdr}
+	makeAck(&ack, Now())
 	n := Now()
 
 	dec, err := decode(ack.buf)
@@ -63,8 +63,8 @@ func TestEncodeRecvTime(t *testing.T) {
 // benchmark how much time it takes to modify the packet
 func BenchmarkRecvTime(b *testing.B) {
 	hdr := bytes.Repeat([]byte{0}, 22)
-	ack := rawAck{buf: hdr}
+	ack := rawPacket{buf: hdr}
 	for i := 0; i < b.N; i++ {
-		makeAck(&ack)
+		makeAck(&ack, Now())
 	}
 }
