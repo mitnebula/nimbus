@@ -1,13 +1,13 @@
 package main
 
 import (
-	//"fmt"
+	"fmt"
 	"math"
 	"time"
 )
 
 const (
-	est_bandwidth = 120e6
+	est_bandwidth = 48e6
 
 	alpha = 1
 
@@ -19,8 +19,11 @@ const (
 
 var beta float64
 
+var origFlowRate float64
 var zt_history *TimedLog
 var switchTime time.Time
+
+var currMode string
 
 func init() {
 	zt_history = InitTimedLog(min_rtt)
@@ -28,6 +31,7 @@ func init() {
 
 	// (est_bandwidth / min_rtt) * C where 0 < C < 1, use C = 0.4
 	beta = (flowRate / 0.001) * 0.33
+	origFlowRate = flowRate
 }
 
 func deltaZt(zt float64, rtt time.Duration) (float64, error) {
@@ -40,19 +44,38 @@ func deltaZt(zt float64, rtt time.Duration) (float64, error) {
 }
 
 func switchFromDelayToTest() {
-	return // TODO
+	fmt.Printf("%v : DELAY -> TEST\n", time.Now().UnixNano())
+	flowMode = TEST_FROM_DELAY
+	currMode = "TEST_FROM_DELAY"
+	origFlowRate = flowRate
+	switchTime = time.Now()
+	return
 }
 
 func switchFromTestToDelay() {
-	return // TODO
+	fmt.Printf("%v : TEST -> DELAY\n", time.Now().UnixNano())
+	flowMode = DELAY
+	currMode = "DELAY"
+	switchTime = time.Now()
+	return
 }
 
 func switchFromXtcpToTest() {
-	return // TODO
+	fmt.Printf("%v : XTCP -> TEST\n", time.Now().UnixNano())
+	flowMode = TEST_FROM_XTCP
+	currMode = "TEST_FROM_XTCP"
+	origFlowRate = flowRate
+	switchTime = time.Now()
+	return
 }
 
 func switchFromTestToXtcp() {
-	return // TODO
+	fmt.Printf("%v : TEST -> XTCP\n", time.Now().UnixNano())
+	flowMode = XTCP
+	currMode = "XTCP"
+	xtcpData.setXtcpCwnd(flowRate)
+	switchTime = time.Now()
+	return
 }
 
 func shouldSwitch(zt float64, rtt time.Duration) {
@@ -101,6 +124,40 @@ func shouldSwitch(zt float64, rtt time.Duration) {
 	}
 }
 
+func updateRateTestFromDelay(rt float64) float64 {
+	if elapsed := time.Since(switchTime); elapsed < min_rtt {
+		// in the first min_rtt
+		// increase rate by 50%
+		return rt * 1.5
+	} else if elapsed < 2*min_rtt {
+		// in the second min_rtt
+		// return to original rate
+		return origFlowRate
+	} else if elapsed < 3*min_rtt {
+		// in the third min_rtt
+		//decrease rate by ~50%
+		return rt * 0.6
+	}
+	return origFlowRate
+}
+
+func updateRateTestFromXtcp(rt float64) float64 {
+	if elapsed := time.Since(switchTime); elapsed < min_rtt {
+		// in the first min_rtt
+		//decrease rate by ~50%
+		return rt * 0.6
+	} else if elapsed < 2*min_rtt {
+		// in the second min_rtt
+		// return to original rate
+		return origFlowRate
+	} else if elapsed < 3*min_rtt {
+		// in the third min_rtt
+		// increase rate by 50%
+		return rt * 1.5
+	}
+	return origFlowRate
+}
+
 func updateRateDelay(
 	rt float64,
 	est_bandwidth float64,
@@ -142,7 +199,12 @@ func measure() (
 		return
 	}
 
-	rin, err = ThroughputFromPackets(sendTimes, oldPkt, newPkt)
+	t1, t2, err := PacketTimes(sendTimes, oldPkt, newPkt)
+	if err != nil {
+		return
+	}
+
+	rin, _, _, err = ThroughputFromTimes(sendTimes, t1, t1.Sub(t2))
 	if err != nil {
 		return
 	}
@@ -179,6 +241,7 @@ func flowRateUpdater() {
 func doUpdate() {
 	rin, _, zt, rtt, err := measure()
 	if err != nil {
+		fmt.Println(err)
 		return
 	}
 
@@ -198,6 +261,10 @@ func doUpdate() {
 		)
 	case XTCP:
 		flowRate = xtcpData.updateRateXtcp(rtt)
+	case TEST_FROM_DELAY:
+		flowRate = updateRateTestFromDelay(flowRate)
+	case TEST_FROM_XTCP:
+		flowRate = updateRateTestFromXtcp(flowRate)
 	}
 
 	if flowRate < 0 {

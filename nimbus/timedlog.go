@@ -75,6 +75,10 @@ func (l *TimedLog) Add(t time.Time, it TimedLogVal) {
 func (l *TimedLog) Before(wanted time.Time) (TimedLogVal, time.Time, error) {
 	var then time.Time
 
+	if len(l.times) == 0 {
+		return nil, time.Now(), fmt.Errorf("empty log")
+	}
+
 	if wanted.Before(l.times[0]) {
 		return l.t[l.times[0]], l.times[0], fmt.Errorf("wanted time before log start")
 	}

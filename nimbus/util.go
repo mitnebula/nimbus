@@ -54,29 +54,32 @@ func ThroughputFromTimes(
 	return tpt, oldestPkt, newestPkt, nil
 }
 
-func ThroughputFromPackets(
+func PacketTimes(
 	times *TimedLog,
 	oldPkt Packet,
 	newPkt Packet,
-) (float64, error) {
+) (time.Time, time.Time, error) {
 	// set to 0 to make it match in the map
 	oldPkt.RecvTime = 0
 	newPkt.RecvTime = 0
+	oldPkt.Echo = 0
+	newPkt.Echo = 0
 
 	times.mux.Lock()
+	defer times.mux.Unlock()
 
 	oldPktTime, ok := times.m[oldPkt]
 	if !ok {
-		return 0, fmt.Errorf("can't find packet time: %v", oldPkt)
+		t := time.Now()
+		return t, t, fmt.Errorf("can't find packet time: %v", oldPkt)
 	}
 	newPktTime, ok := times.m[newPkt]
 	if !ok {
-		return 0, fmt.Errorf("can't find packet time: %v", newPkt)
+		t := time.Now()
+		return t, t, fmt.Errorf("can't find packet time: %v", newPkt)
 	}
 
-	times.mux.Unlock()
-	tpt, _, _, err := ThroughputFromTimes(times, newPktTime, newPktTime.Sub(oldPktTime))
-	return tpt, err
+	return newPktTime, oldPktTime, nil
 }
 
 func MinRtt(rtts *Log) time.Duration {

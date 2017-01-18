@@ -85,10 +85,6 @@ func (xt *xtcpDataContainer) dropDetected(vfid uint16) {
 	defer xt.mut.Unlock()
 
 	switch flowMode {
-	case DELAY:
-		flowRateLock.Lock()
-		defer flowRateLock.Unlock()
-		xt.switchToXtcp(flowRate)
 	case XTCP:
 		if Now() > xt.drop_time[vfid] {
 			xt.virtual_cwnds[vfid] *= 0.5
@@ -103,13 +99,6 @@ func (xt *xtcpDataContainer) dropDetected(vfid uint16) {
 			xt.drop_time[vfid] = Now() + time.Duration(lv.(durationLogVal)).Nanoseconds()
 		}
 	}
-}
-
-// assume lock already acquired
-func (xt *xtcpDataContainer) switchToXtcp(flowRate float64) {
-	fmt.Println("switching to xtcp")
-	flowMode = XTCP
-	xt.setXtcpCwnd(flowRate)
 }
 
 func (xt *xtcpDataContainer) checkXtcpSeq(fid uint16, seq uint32) bool {

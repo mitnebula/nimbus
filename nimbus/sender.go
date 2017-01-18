@@ -34,8 +34,9 @@ var flowMode Mode
 
 func init() {
 	flowMode = DELAY
+	currMode = "DELAY"
 
-	flowRate = 90e6
+	flowRate = 40e6
 	min_rtt = time.Duration(999) * time.Hour
 
 	rtts = InitLog(1000)
@@ -61,7 +62,7 @@ func Server(port string) error {
 	}
 
 	go handleAck(conn, addr, rtt_history)
-	//go flowRateUpdater()
+	go flowRateUpdater()
 	go output()
 
 	startTime = time.Now()
@@ -120,7 +121,7 @@ func output() {
 		if err != nil {
 			outTpt = 0
 		}
-		fmt.Printf("%v : %v %v %v %v\n", Now(), inTpt, outTpt, time.Duration(rtt.(durationLogVal)), min_rtt)
+		fmt.Printf("%v : %v %v %v %v %s\n", Now(), inTpt, outTpt, time.Duration(rtt.(durationLogVal)), min_rtt, currMode)
 	}
 }
 
@@ -133,6 +134,7 @@ func rttUpdater(rtt_history chan int64) {
 
 			sendTimes.UpdateDuration(rtt * 100)
 			ackTimes.UpdateDuration(rtt * 100)
+			zt_history.UpdateDuration(rtt * 100)
 		}
 
 		rtts.Add(durationLogVal(rtt))
