@@ -93,7 +93,9 @@ func shouldSwitch(zt float64, rtt time.Duration) {
 			return
 		}
 
-		if dZt > delayToTestThresh*est_bandwidth {
+		rttThresh := time.Duration(1.5*float64(min_rtt.Nanoseconds())) * time.Nanosecond
+
+		if dZt > delayToTestThresh*est_bandwidth || rtt > rttThresh {
 			switchFromDelayToTest()
 		}
 	case XTCP:
