@@ -56,7 +56,7 @@ func Server(port string) error {
 	rtt_history := make(chan int64)
 	go rttUpdater(rtt_history)
 
-	conn, err = listenForSyn(conn, addr)
+	_, conn, err = listenForSyn(conn, addr)
 	if err != nil {
 		return err
 	}
@@ -71,43 +71,30 @@ func Server(port string) error {
 	return nil
 }
 
-func setupListeningSock(port string) (*net.UDPConn, *net.UDPAddr, error) {
-	// set up syn listening socket
-	addr, err := net.ResolveUDPAddr("udp4", fmt.Sprintf(":%s", port))
+func Sender(ip string, port string) error {
+	conn, toAddr, err := setupClientSock(ip, port)
 	if err != nil {
-		return nil, nil, err
+		return err
 	}
 
-	conn, err := net.ListenUDP("udp4", addr)
+	rtt_history := make(chan int64)
+	go rttUpdater(rtt_history)
+
+	err = synAckExchange(conn, toAddr, rtt_history)
 	if err != nil {
-		return nil, nil, err
+		return err
 	}
 
-	return conn, addr, nil
-}
+	fmt.Println("connected")
 
-// wait for the SYN
-// send the synack
-func listenForSyn(
-	conn *net.UDPConn,
-	listenAddr *net.UDPAddr,
-) (*net.UDPConn, error) {
-	_, fromAddr, err := r.RecvPacket(conn)
-	if err != nil {
-		return nil, err
-	}
+	go handleAck(conn, toAddr, rtt_history)
+	go flowRateUpdater()
+	go output()
 
-	// close and reopen
-	conn.Close()
+	startTime = time.Now()
+	go send(conn)
 
-	// dial connection to send ACKs
-	newConn, err := net.DialUDP("udp4", listenAddr, fromAddr)
-	if err != nil {
-		return nil, err
-	}
-
-	fmt.Println("connected to ", fromAddr)
-	return newConn, nil
+	return nil
 }
 
 func output() {

@@ -34,31 +34,26 @@ func Client(ip string, port string) error {
 	return nil
 }
 
-func setupClientSock(ip string, port string) (*net.UDPConn, *net.UDPAddr, error) {
-	addr, err := net.ResolveUDPAddr("udp4", fmt.Sprintf("%s:%s", ip, port))
-	if err != nil {
-		return nil, nil, err
-	}
-	conn, err := net.DialUDP("udp4", nil, addr)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return conn, addr, nil
-}
-
-func sendSyn(conn *net.UDPConn) error {
-	syn := Packet{
-		SeqNo:   42,
-		VirtFid: 42,
-		Echo:    Now(),
-		Payload: "SYN",
-	}
-
-	err := r.SendAck(conn, syn)
+func Receiver(port string) error {
+	conn, listenAddr, err := setupListeningSock(port)
 	if err != nil {
 		return err
 	}
+
+	syn, conn, err := listenForSyn(conn, listenAddr)
+	if err != nil {
+		return err
+	}
+
+	go receive(conn)
+	go func() {
+		// send first ack
+		syn.RecvTime = Now()
+		err := r.SendAck(conn, syn)
+		if err != nil {
+			fmt.Println("synack", err)
+		}
+	}()
 
 	return nil
 }

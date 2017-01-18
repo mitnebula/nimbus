@@ -11,7 +11,7 @@ import (
 
 var ip = flag.String("ip", "127.0.0.1", "IP to connect to")
 var port = flag.String("port", "42424", "Port to connect to/listen on")
-var mode = flag.String("mode", "client", "server or client")
+var mode = flag.String("mode", "client", "server|client|sender|receiver")
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile `file`")
 
 var r pktops
@@ -45,16 +45,18 @@ func main() {
 
 	startTime = time.Now()
 
+	var err error
 	if *mode == "server" {
-		err := Server(*port)
-		if err != nil {
-			fmt.Println(err)
-		}
+		err = Server(*port)
 	} else if *mode == "client" {
-		err := Client(*ip, *port)
-		if err != nil {
-			fmt.Println(err)
-		}
+		err = Client(*ip, *port)
+	} else if *mode == "sender" {
+		err = Sender(*ip, *port)
+	} else if *mode == "receiver" {
+		err = Receiver(*port)
+	}
+	if err != nil {
+		fmt.Println(err)
 	}
 
 	<-done
@@ -68,4 +70,5 @@ func exitStats(interrupt chan os.Signal) {
 	totalBytes = float64(recvCount * ONE_PACKET)
 	fmt.Printf("Received: throughput %.4v; %v packets in %v\n", totalBytes/elapsed.Seconds(), recvCount, elapsed)
 	done <- struct{}{}
+	os.Exit(0)
 }
