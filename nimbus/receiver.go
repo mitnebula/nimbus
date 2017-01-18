@@ -3,14 +3,11 @@ package main
 import (
 	"fmt"
 	"net"
-	"os"
-	"os/signal"
 	"time"
 )
 
 var rcvd *receivedBytes
 var ackBuffer *rawPacket
-var done chan interface{}
 
 func init() {
 	rcvd = &receivedBytes{
@@ -20,66 +17,54 @@ func init() {
 	ackBuffer = &rawPacket{
 		buf: make([]byte, 22),
 	}
-
-	done = make(chan interface{})
 }
 
-func Receiver(port string) error {
-	addr, err := net.ResolveUDPAddr("udp4", fmt.Sprintf(":%s", port))
+func Client(ip string, port string) error {
+	conn, _, err := setupClientSock(ip, port)
 	if err != nil {
 		return err
 	}
 
-	rcvConn, err := net.ListenUDP("udp4", addr)
+	go receive(conn)
+	err = sendSyn(conn)
 	if err != nil {
 		return err
 	}
-
-	err = rcvConn.SetReadBuffer(SOCK_BUF_SIZE)
-	if err != nil {
-		fmt.Println("err setting sock rd buf sz", err)
-	}
-
-	// wait for first packet
-	syn, fromAddr, err := RecvPacket(rcvConn)
-	if err != nil {
-		return err
-	}
-
-	// close and reopen
-	rcvConn.Close()
-
-	// dial connection to send ACKs
-	rcvConn, err = net.DialUDP("udp4", addr, fromAddr)
-	if err != nil {
-		return err
-	}
-
-	go func() {
-		fmt.Println("connected to ", fromAddr)
-
-		// send first ack
-		syn.RecvTime = Now()
-		err := SendAck(rcvConn, syn)
-		if err != nil {
-			fmt.Println("synack", err)
-		}
-	}()
-
-	//print on ctrl-c
-	procExit := make(chan os.Signal, 1)
-	signal.Notify(procExit, os.Interrupt)
-
-	var r realPacketOps
-	go receive(rcvConn, r)
-
-	exitStats(procExit, done)
 
 	return nil
 }
 
-func receive(conn *net.UDPConn, r packetOps) error {
-	tot := 0
+func setupClientSock(ip string, port string) (*net.UDPConn, *net.UDPAddr, error) {
+	addr, err := net.ResolveUDPAddr("udp4", fmt.Sprintf("%s:%s", ip, port))
+	if err != nil {
+		return nil, nil, err
+	}
+	conn, err := net.DialUDP("udp4", nil, addr)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return conn, addr, nil
+}
+
+func sendSyn(conn *net.UDPConn) error {
+	syn := Packet{
+		SeqNo:   42,
+		VirtFid: 42,
+		Echo:    Now(),
+		Payload: "SYN",
+	}
+
+	err := SendAck(conn, syn)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func receive(conn *net.UDPConn) error {
+	var r realPacketOps
 	lastTime := time.Now()
 	for {
 		err := doReceive(conn, r, &lastTime)
@@ -88,13 +73,17 @@ func receive(conn *net.UDPConn, r packetOps) error {
 			continue
 		}
 
-		tot += 1
+		recvCount++
 	}
 }
 
 func doReceive(conn *net.UDPConn, r packetOps, lastTime *time.Time) error {
 	r.Listen(conn, rcvd)
 	*lastTime = time.Now()
+	if rcvd.err != nil {
+		fmt.Println(rcvd.err)
+		return rcvd.err
+	}
 
 	// copy header (first 22 bytes) to ack
 	ack := rcvd.b[:22]

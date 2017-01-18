@@ -2,10 +2,7 @@ package main
 
 import (
 	"fmt"
-	//"math"
 	"net"
-	"os"
-	"os/signal"
 	"sync"
 	"time"
 )
@@ -35,11 +32,6 @@ const (
 
 var flowMode Mode
 
-// overall statistics
-var sendCount int64
-var recvCount int64
-var startTime time.Time
-
 func init() {
 	flowMode = XTCP
 
@@ -58,87 +50,64 @@ func init() {
 	recvCount = 0
 }
 
-func Sender(ip string, port string) error {
-	addr, err := net.ResolveUDPAddr("udp4", fmt.Sprintf("%s:%s", ip, port))
-	if err != nil {
-		return err
-	}
-	conn, err := net.DialUDP("udp4", nil, addr)
+func Server(port string) error {
+	conn, addr, err := setupListeningSock(port)
 	if err != nil {
 		return err
 	}
 
-	err = conn.SetWriteBuffer(SOCK_BUF_SIZE)
-	if err != nil {
-		fmt.Println("err setting sock wr buf sz", err)
-	}
-
-	recvExit := make(chan interface{})
 	rtt_history := make(chan int64)
 	go rttUpdater(rtt_history)
 
-	err = synAckExchange(conn, addr, rtt_history)
+	conn, err = listenForSyn(conn, addr)
 	if err != nil {
 		return err
 	}
 
-	fmt.Println("connected")
-
-	//print on ctrl-c
-	procExit := make(chan os.Signal, 1)
-	signal.Notify(procExit, os.Interrupt)
-
-	go handleAck(conn, addr, rtt_history, recvExit)
+	go handleAck(conn, addr, rtt_history)
 	//go flowRateUpdater()
-	//go output()
+	go output()
 
 	startTime = time.Now()
-	go send(conn, recvExit)
-	exitStats(procExit, recvExit)
+	go send(conn)
 
 	return nil
 }
 
-func synAckExchange(conn *net.UDPConn, expSrc *net.UDPAddr, rtt_history chan int64) error {
-	seq, vfid := xtcpData.getNextSeq()
-	syn := Packet{
-		SeqNo:   seq,
-		VirtFid: vfid,
-		Echo:    Now(),
-		Payload: "SYN",
-	}
-
-	err := SendAck(conn, syn)
+func setupListeningSock(port string) (*net.UDPConn, *net.UDPAddr, error) {
+	// set up syn listening socket
+	addr, err := net.ResolveUDPAddr("udp4", fmt.Sprintf(":%s", port))
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 
-	ack, srcAddr, err := RecvPacket(conn)
+	conn, err := net.ListenUDP("udp4", addr)
 	if err != nil {
-		return err
-	}
-	if srcAddr.String() != expSrc.String() {
-		return fmt.Errorf("got packet from unexpected src: %s; expected %s", srcAddr, expSrc)
+		return nil, nil, err
 	}
 
-	xtcpData.checkXtcpSeq(ack.VirtFid, ack.SeqNo)
-
-	delay := ack.RecvTime - ack.Echo // one way delay
-	rtt_history <- delay * 2         // multiply one-way delay by 2
-
-	return nil
+	return conn, addr, nil
 }
 
-func exitStats(procExit chan os.Signal, done chan interface{}) {
-	select {
-	case <-procExit:
-	case <-done:
+// wait for the SYN
+// send the synack
+func listenForSyn(conn *net.UDPConn, listenAddr *net.UDPAddr) (*net.UDPConn, error) {
+	_, fromAddr, err := RecvPacket(conn)
+	if err != nil {
+		return nil, err
 	}
-	elapsed := time.Since(startTime)
-	totalBytes := float64(sendCount * ONE_PACKET)
-	fmt.Printf("Sent: throughput %.4v; %v packets in %v\n", totalBytes/elapsed.Seconds(), sendCount, elapsed)
-	totalBytes = float64(recvCount * ONE_PACKET)
-	fmt.Printf("Received: throughput %.4v; %v packets in %v\n", totalBytes/elapsed.Seconds(), recvCount, elapsed)
+
+	// close and reopen
+	conn.Close()
+
+	// dial connection to send ACKs
+	newConn, err := net.DialUDP("udp4", listenAddr, fromAddr)
+	if err != nil {
+		return nil, err
+	}
+
+	fmt.Println("connected to ", fromAddr)
+	return newConn, nil
 }
 
 func output() {
@@ -210,40 +179,39 @@ func stampTime(pkt *rawPacket, t int64) {
 
 func send(
 	conn *net.UDPConn,
-	done chan interface{},
 ) error {
 	pacing := make(chan interface{})
 	go flowPacer(pacing)
 
 	for {
-		seq, vfid := xtcpData.getNextSeq()
-
-		pkt := Packet{
-			SeqNo:   seq,
-			VirtFid: vfid,
-		}
-		rp, err := MakeRawPacket(pkt, 1500)
-		if err != nil {
-			fmt.Println(err)
-		}
-
-		stampTime(rp, Now())
-		SendRaw(conn, rp)
-		sendTimes.Add(time.Now(), pkt)
-
+		doSend(conn)
 		sendCount++
 		<-pacing
 	}
+}
 
-	//done <- struct{}{}
-	//return nil
+func doSend(conn *net.UDPConn) error {
+	seq, vfid := xtcpData.getNextSeq()
+
+	pkt := Packet{
+		SeqNo:   seq,
+		VirtFid: vfid,
+	}
+	rp, err := MakeRawPacket(pkt, 1500)
+	if err != nil {
+		return err
+	}
+
+	stampTime(rp, Now())
+	SendRaw(conn, rp)
+	sendTimes.Add(time.Now(), pkt)
+	return nil
 }
 
 func handleAck(
 	conn *net.UDPConn,
 	expSrc *net.UDPAddr,
 	rtt_history chan int64,
-	done chan interface{},
 ) {
 	pktBuf := &receivedBytes{b: make([]byte, 50)}
 	for {
