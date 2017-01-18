@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"net"
 	"sync"
 )
@@ -12,6 +11,16 @@ type Packet struct {
 	Echo     int64  // time at which packet was sent
 	RecvTime int64  // time packet reached receiver
 	Payload  string // payload (useless)
+}
+
+func (pkt Packet) makeRaw(
+	size int,
+) (*rawPacket, error) {
+	// ip header 20 bytes
+	// udp header 8 bytes
+	padTo := size - 28
+	b, err := encode(pkt, padTo)
+	return &rawPacket{buf: b}, err
 }
 
 type rawPacket struct {
@@ -26,105 +35,6 @@ type receivedBytes struct {
 	mut  sync.Mutex
 }
 
-type packetOps interface {
-	Listen(conn *net.UDPConn, res *receivedBytes)
-	SendRaw(conn *net.UDPConn, p *rawPacket) error
-}
-
-type realPacketOps struct{}
-
-func PrintPacket(pkt Packet) string {
-	return fmt.Sprintf(
-		"{seq %d vfid %d echo %d recv %d size %d}",
-		pkt.SeqNo,
-		pkt.VirtFid,
-		pkt.Echo,
-		pkt.RecvTime,
-		len(pkt.Payload),
-	)
-}
-
-func MakeRawPacket(
-	pkt Packet,
-	size int,
-) (*rawPacket, error) {
-	// ip header 20 bytes
-	// udp header 8 bytes
-	padTo := size - 28
-	b, err := encode(pkt, padTo)
-	return &rawPacket{buf: b}, err
-}
-
-func SendPacket(
-	conn *net.UDPConn,
-	pkt Packet,
-	size int,
-) error {
-	rp, err := MakeRawPacket(pkt, size)
-
-	_, err = conn.Write(rp.buf)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func SendAck(
-	conn *net.UDPConn,
-	pkt Packet,
-) error {
-	return SendPacket(conn, pkt, 28)
-}
-
-func (r realPacketOps) SendRaw(
-	conn *net.UDPConn,
-	p *rawPacket,
-) error {
-	_, err := conn.Write(p.buf)
-	return err
-}
-
-func SendRaw(
-	conn *net.UDPConn,
-	p *rawPacket,
-) error {
-	_, err := conn.Write(p.buf)
-	return err
-}
-
-// helper function to receive and decode a packet
-// use when decoding can be done synchronously
-func RecvPacket(
-	conn *net.UDPConn,
-) (Packet, *net.UDPAddr, error) {
-	rcvd := receivedBytes{b: make([]byte, 1500)}
-	Listen(conn, &rcvd)
-	if rcvd.err != nil {
-		return Packet{}, nil, rcvd.err
-	}
-
-	return Decode(&rcvd)
-}
-
-func (r realPacketOps) Listen(
-	conn *net.UDPConn,
-	res *receivedBytes,
-) {
-	_, addr, err := conn.ReadFromUDP(res.b)
-	res.from = addr
-	res.err = err
-}
-
-func Listen(
-	conn *net.UDPConn,
-	res *receivedBytes,
-) {
-	_, addr, err := conn.ReadFromUDP(res.b)
-	res.from = addr
-	res.err = err
-}
-
 func Decode(
 	r *receivedBytes,
 ) (Packet, *net.UDPAddr, error) {
@@ -134,4 +44,68 @@ func Decode(
 	}
 
 	return pkt, r.from, nil
+}
+
+type packetOps interface {
+	SendPacket(conn *net.UDPConn, pkt Packet, size int) error
+	SendAck(conn *net.UDPConn, pkt Packet) error
+	SendRaw(conn *net.UDPConn, pkt *rawPacket) error
+
+	RecvPacket(conn *net.UDPConn) (Packet, *net.UDPAddr, error)
+	Listen(conn *net.UDPConn, res *receivedBytes)
+}
+
+type pktops struct{}
+
+func (r pktops) SendPacket(
+	conn *net.UDPConn,
+	pkt Packet,
+	size int,
+) error {
+	rp, err := pkt.makeRaw(size)
+
+	_, err = conn.Write(rp.buf)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (r pktops) SendAck(
+	conn *net.UDPConn,
+	pkt Packet,
+) error {
+	return r.SendPacket(conn, pkt, 28)
+}
+
+func (r pktops) SendRaw(
+	conn *net.UDPConn,
+	p *rawPacket,
+) error {
+	_, err := conn.Write(p.buf)
+	return err
+}
+
+// helper function to receive and decode a packet
+// use when decoding can be done synchronously
+func (r pktops) RecvPacket(
+	conn *net.UDPConn,
+) (Packet, *net.UDPAddr, error) {
+	rcvd := receivedBytes{b: make([]byte, 1500)}
+	r.Listen(conn, &rcvd)
+	if rcvd.err != nil {
+		return Packet{}, nil, rcvd.err
+	}
+
+	return Decode(&rcvd)
+}
+
+func (r pktops) Listen(
+	conn *net.UDPConn,
+	res *receivedBytes,
+) {
+	_, addr, err := conn.ReadFromUDP(res.b)
+	res.from = addr
+	res.err = err
 }

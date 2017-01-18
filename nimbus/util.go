@@ -76,3 +76,14 @@ func MinRtt(rtts *Log) time.Duration {
 	min_rtt = time.Duration(lv.(durationLogVal))
 	return min_rtt
 }
+
+func PrintPacket(pkt Packet) string {
+	return fmt.Sprintf(
+		"{seq %d vfid %d echo %d recv %d size %d}",
+		pkt.SeqNo,
+		pkt.VirtFid,
+		pkt.Echo,
+		pkt.RecvTime,
+		len(pkt.Payload),
+	)
+}

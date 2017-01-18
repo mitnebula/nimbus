@@ -92,7 +92,7 @@ func setupListeningSock(port string) (*net.UDPConn, *net.UDPAddr, error) {
 // wait for the SYN
 // send the synack
 func listenForSyn(conn *net.UDPConn, listenAddr *net.UDPAddr) (*net.UDPConn, error) {
-	_, fromAddr, err := RecvPacket(conn)
+	_, fromAddr, err := r.RecvPacket(conn)
 	if err != nil {
 		return nil, err
 	}
@@ -197,13 +197,13 @@ func doSend(conn *net.UDPConn) error {
 		SeqNo:   seq,
 		VirtFid: vfid,
 	}
-	rp, err := MakeRawPacket(pkt, 1500)
+	rp, err := pkt.makeRaw(1500)
 	if err != nil {
 		return err
 	}
 
 	stampTime(rp, Now())
-	SendRaw(conn, rp)
+	r.SendRaw(conn, rp)
 	sendTimes.Add(time.Now(), pkt)
 	return nil
 }
@@ -215,7 +215,7 @@ func handleAck(
 ) {
 	pktBuf := &receivedBytes{b: make([]byte, 50)}
 	for {
-		Listen(conn, pktBuf)
+		r.Listen(conn, pktBuf)
 		pkt, _, err := Decode(pktBuf)
 		if err != nil {
 			fmt.Println(err)

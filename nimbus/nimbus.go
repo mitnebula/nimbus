@@ -14,6 +14,8 @@ var port = flag.String("port", "42424", "Port to connect to/listen on")
 var mode = flag.String("mode", "client", "server or client")
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile `file`")
 
+var r pktops
+
 // overall statistics
 var done chan interface{}
 var sendCount int64

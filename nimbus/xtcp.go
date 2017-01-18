@@ -68,7 +68,6 @@ func (xt *xtcpDataContainer) getNextSeq() (seq uint32, vfid uint16) {
 	xt.seq_nos[vfid]++
 
 	nextFlow := (vfid + 1) % xt.numVirtualFlows
-	//xt.currVirtFlow = nextFlow
 	if xt.seq_nos[vfid] > xt.seq_nos[nextFlow]+180 {
 		xt.currVirtFlow = nextFlow
 	}
@@ -100,7 +99,6 @@ func (xt *xtcpDataContainer) dropDetected(vfid uint16) {
 		xt.switchToXtcp(flowRate)
 	case XTCP:
 		if Now() > xt.drop_time[vfid] {
-			fmt.Println("drop", vfid, xt.virtual_cwnds[vfid])
 			xt.virtual_cwnds[vfid] *= 0.5
 			if xt.virtual_cwnds[vfid] < 1 {
 				xt.virtual_cwnds[vfid] = 1

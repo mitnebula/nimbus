@@ -55,7 +55,7 @@ func sendSyn(conn *net.UDPConn) error {
 		Payload: "SYN",
 	}
 
-	err := SendAck(conn, syn)
+	err := r.SendAck(conn, syn)
 	if err != nil {
 		return err
 	}
@@ -64,7 +64,6 @@ func sendSyn(conn *net.UDPConn) error {
 }
 
 func receive(conn *net.UDPConn) error {
-	var r realPacketOps
 	lastTime := time.Now()
 	for {
 		err := doReceive(conn, r, &lastTime)
