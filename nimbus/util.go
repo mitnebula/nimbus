@@ -18,25 +18,29 @@ func ThroughputFromTimes(times *TimedLog, now time.Time, delay time.Duration) (f
 		return 0, Packet{}, Packet{}, fmt.Errorf("not enough values")
 	}
 
-	newestPkt, newestPktTime, err := times.Before(now)
+	newestPktIt, newestPktTime, err := times.Before(now)
 	if err != nil {
 		return 0, Packet{}, Packet{}, err
 	}
 
-	oldestPkt, oldestPktTime, err := times.Before(now.Add(-1 * delay))
+	newestPkt := newestPktIt.(Packet)
+
+	oldestPktIt, oldestPktTime, err := times.Before(now.Add(-1 * delay))
 	if err != nil {
 		return 0, Packet{}, Packet{}, err
 	}
 
 	for newestPktTime.Equal(oldestPktTime) {
-		oldestPkt, oldestPktTime, err = times.Before(newestPktTime.Add(-1 * time.Nanosecond))
+		oldestPktIt, oldestPktTime, err = times.Before(newestPktTime.Add(-1 * time.Nanosecond))
 		if err != nil {
 			return 0, Packet{}, Packet{}, err
 		}
 	}
 
+	oldestPkt := oldestPktIt.(Packet)
+
 	dur := newestPktTime.Sub(oldestPktTime).Seconds()
-	cnt, _ := times.NumPacketsBetween(oldestPktTime, newestPktTime)
+	cnt, _ := times.NumItemsBetween(oldestPktTime, newestPktTime)
 	tot := float64(cnt * ONE_PACKET)
 	tpt := tot / dur
 	if math.IsNaN(tpt) || math.IsInf(tpt, 1) || tpt < 0 {
