@@ -17,13 +17,8 @@ type xtcpDataContainer struct {
 }
 
 var xtcpData *xtcpDataContainer
-var setcwndcounter int
-
-var lastPrint time.Time
 
 func init() {
-	lastPrint = time.Now()
-	setcwndcounter = 0
 	xtcpData = &xtcpDataContainer{
 		numVirtualFlows: 10,
 		currVirtFlow:    0,
@@ -53,10 +48,6 @@ func (xt *xtcpDataContainer) updateRateXtcp(
 	}
 
 	res := fr * ONE_PACKET / rtt.Seconds()
-	if time.Since(lastPrint) > time.Duration(40)*time.Millisecond {
-		//fmt.Printf("time: %v xtcp_vcwnd: %v xtcp_curr_rate: %v rtt: %v\n", time.Since(startTime).Seconds(), fr, res, rtt)
-		lastPrint = time.Now()
-	}
 	return res
 }
 
@@ -76,13 +67,16 @@ func (xt *xtcpDataContainer) getNextSeq() (seq uint32, vfid uint16) {
 }
 
 func (xt *xtcpDataContainer) setXtcpCwnd(flowRate float64) {
-	setcwndcounter++ // TODO remove this sanity check (for no competition case)
-	if setcwndcounter > 1 {
-		panic(false)
+	var avgRtt float64
+	lv, err := rtts.Avg()
+	if err != nil {
+		avgRtt = 0.165
+	} else {
+		avgRtt = time.Duration(lv.(durationLogVal)).Seconds()
 	}
+
 	for vfid := uint16(0); vfid < xt.numVirtualFlows; vfid++ {
-		// TODO use curr rtt instead of 0.165
-		xt.virtual_cwnds[vfid] = (0.165 * flowRate) / float64(8*1500*xt.numVirtualFlows)
+		xt.virtual_cwnds[vfid] = (avgRtt * flowRate) / float64(8*1500*xt.numVirtualFlows)
 	}
 }
 
@@ -91,8 +85,6 @@ func (xt *xtcpDataContainer) dropDetected(vfid uint16) {
 	defer xt.mut.Unlock()
 
 	switch flowMode {
-	case BETAZERO:
-		fallthrough
 	case DELAY:
 		flowRateLock.Lock()
 		defer flowRateLock.Unlock()

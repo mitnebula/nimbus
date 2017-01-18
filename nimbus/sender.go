@@ -20,31 +20,27 @@ var min_rtt time.Duration
 var rtts *Log
 var sendTimes *TimedLog
 var ackTimes *TimedLog
-var rin_history *Log
 
 type Mode int
 
 const (
 	DELAY Mode = iota
-	BETAZERO
 	XTCP
+	TEST_FROM_DELAY
+	TEST_FROM_XTCP
 )
 
 var flowMode Mode
 
 func init() {
-	flowMode = XTCP
+	flowMode = DELAY
 
 	flowRate = 90e6
 	min_rtt = time.Duration(999) * time.Hour
 
-	// (est_bandwidth / min_rtt) * C where 0 < C < 1, use C = 0.4
-	beta = (flowRate / 0.001) * 0.33
-
-	rtts = InitLog(180)
+	rtts = InitLog(1000)
 	sendTimes = InitTimedLog(min_rtt)
 	ackTimes = InitTimedLog(min_rtt)
-	rin_history = InitLog(500)
 
 	sendCount = 0
 	recvCount = 0
@@ -144,20 +140,10 @@ func rttUpdater(rtt_history chan int64) {
 func flowPacer(pacing chan interface{}) {
 	credit := float64(ONE_PACKET)
 	lastTime := time.Now()
-	var avgRtt time.Duration
 
 	for _ = range time.Tick(time.Duration(100) * time.Microsecond) {
 		elapsed := time.Since(lastTime)
 		lastTime = time.Now()
-
-		lv, err := rtts.Avg()
-		if err != nil {
-			continue
-		}
-		avgRtt = time.Duration(lv.(durationLogVal))
-		if err == nil {
-			flowRate = xtcpData.updateRateXtcp(avgRtt)
-		}
 
 		credit += elapsed.Seconds() * flowRate
 		if credit > 100*ONE_PACKET {
