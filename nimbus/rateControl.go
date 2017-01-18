@@ -120,14 +120,24 @@ func updateRateDelay(
 	return newRate
 }
 
-func measure() (rin float64, rout float64, zt float64, avgRtt time.Duration, err error) {
+func measure() (
+	rin float64,
+	rout float64,
+	zt float64,
+	avgRtt time.Duration,
+	err error,
+) {
 	lv, err := rtts.Latest()
 	if err != nil {
 		return
 	}
 	rtt := time.Duration(lv.(durationLogVal))
 
-	rout, oldPkt, newPkt, err := ThroughputFromTimes(ackTimes, time.Now(), rtt)
+	rout, oldPkt, newPkt, err := ThroughputFromTimes(
+		ackTimes,
+		time.Now(),
+		rtt,
+	)
 	if err != nil {
 		return
 	}
@@ -179,7 +189,13 @@ func doUpdate() {
 
 	switch flowMode {
 	case DELAY:
-		flowRate = updateRateDelay(flowRate, est_bandwidth, rin, zt, rtt)
+		flowRate = updateRateDelay(
+			flowRate,
+			est_bandwidth,
+			rin,
+			zt,
+			rtt,
+		)
 	case XTCP:
 		flowRate = xtcpData.updateRateXtcp(rtt)
 	}

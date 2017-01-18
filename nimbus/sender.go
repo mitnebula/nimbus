@@ -87,7 +87,10 @@ func setupListeningSock(port string) (*net.UDPConn, *net.UDPAddr, error) {
 
 // wait for the SYN
 // send the synack
-func listenForSyn(conn *net.UDPConn, listenAddr *net.UDPAddr) (*net.UDPConn, error) {
+func listenForSyn(
+	conn *net.UDPConn,
+	listenAddr *net.UDPAddr,
+) (*net.UDPConn, error) {
 	_, fromAddr, err := r.RecvPacket(conn)
 	if err != nil {
 		return nil, err

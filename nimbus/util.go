@@ -10,7 +10,11 @@ func Now() int64 {
 	return time.Now().UnixNano()
 }
 
-func ThroughputFromTimes(times *TimedLog, now time.Time, delay time.Duration) (float64, Packet, Packet, error) {
+func ThroughputFromTimes(
+	times *TimedLog,
+	now time.Time,
+	delay time.Duration,
+) (float64, Packet, Packet, error) {
 	times.mux.Lock()
 	defer times.mux.Unlock()
 
@@ -50,7 +54,11 @@ func ThroughputFromTimes(times *TimedLog, now time.Time, delay time.Duration) (f
 	return tpt, oldestPkt, newestPkt, nil
 }
 
-func ThroughputFromPackets(times *TimedLog, oldPkt Packet, newPkt Packet) (float64, error) {
+func ThroughputFromPackets(
+	times *TimedLog,
+	oldPkt Packet,
+	newPkt Packet,
+) (float64, error) {
 	// set to 0 to make it match in the map
 	oldPkt.RecvTime = 0
 	newPkt.RecvTime = 0

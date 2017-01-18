@@ -76,7 +76,11 @@ func receive(conn *net.UDPConn) error {
 	}
 }
 
-func doReceive(conn *net.UDPConn, r packetOps, lastTime *time.Time) error {
+func doReceive(
+	conn *net.UDPConn,
+	r packetOps,
+	lastTime *time.Time,
+) error {
 	r.Listen(conn, rcvd)
 	*lastTime = time.Now()
 	if rcvd.err != nil {
