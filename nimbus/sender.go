@@ -108,7 +108,11 @@ func output() {
 		if err != nil {
 			outTpt = 0
 		}
-		fmt.Printf("%v : %v %v %v %v %s\n", Now(), inTpt, outTpt, time.Duration(rtt.(durationLogVal)), min_rtt, currMode)
+		fmt.Printf("%v : %v %v %v %v %s\n", time.Since(startTime), inTpt, outTpt, time.Duration(rtt.(durationLogVal)), min_rtt, currMode)
+
+		if time.Now().After(endTime) {
+			doExit()
+		}
 	}
 }
 

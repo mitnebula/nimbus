@@ -13,6 +13,7 @@ var ip = flag.String("ip", "127.0.0.1", "IP to connect to")
 var port = flag.String("port", "42424", "Port to connect to/listen on")
 var mode = flag.String("mode", "client", "server|client|sender|receiver")
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile `file`")
+var runtime = flag.Int("t", 180, "runtime in seconds")
 
 var r pktops
 
@@ -21,6 +22,7 @@ var done chan interface{}
 var sendCount int64
 var recvCount int64
 var startTime time.Time
+var endTime time.Time
 
 func main() {
 	flag.Parse()
@@ -52,6 +54,9 @@ func main() {
 		err = Client(*ip, *port)
 	} else if *mode == "sender" {
 		err = Sender(*ip, *port)
+
+		rt := time.Duration(*runtime) * time.Second
+		endTime = startTime.Add(rt)
 	} else if *mode == "receiver" {
 		err = Receiver(*port)
 	}
@@ -64,6 +69,10 @@ func main() {
 
 func exitStats(interrupt chan os.Signal) {
 	<-interrupt
+	doExit()
+}
+
+func doExit() {
 	elapsed := time.Since(startTime)
 	totalBytes := float64(sendCount * ONE_PACKET)
 	fmt.Printf("Sent: throughput %.4v; %v packets in %v\n", totalBytes/elapsed.Seconds(), sendCount, elapsed)
@@ -71,4 +80,5 @@ func exitStats(interrupt chan os.Signal) {
 	fmt.Printf("Received: throughput %.4v; %v packets in %v\n", totalBytes/elapsed.Seconds(), recvCount, elapsed)
 	done <- struct{}{}
 	os.Exit(0)
+
 }
