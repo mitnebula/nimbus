@@ -31,6 +31,8 @@ def parseTptOutput(sp):
     return ret
 
 def parseSwitchOutput(sp):
+    if len(sp) == 6:
+        sp = sp[:-1]
     t, _, fr, _, to = sp
     return {
         'time': parseTime(t),
@@ -56,42 +58,15 @@ def readNimbusLines(f):
 
 def readIperfLines(f):
     ls = f.readlines()
-    offset = 0
 
     # first line is start time
     for l in ls[:-1]:
-        matches = re.findall(r'-\s?([0-9]+\.0) sec .*\s([0-9]+\.?[0-9]+) M?K?bits', l)
+        matches = re.findall(r'-\s?([0-9]+\.0) sec .*\s([0-9]+\.[0-9]+) Mbits', l)
         if len(matches) != 1:
             continue
         t, bw = matches[0]
-        ti = float(t)
-        if ti == 2.0:
-            offset += 10
 
         yield {
-            'time': ti + offset,
+            'time': float(t),
             'tpt': float(bw),
         }
-
-def readShortIperfs(f):
-    ls = f.readlines()
-    offset = 0
-    currFlow = []
-    for l in ls:
-        matches = re.findall(r'-\s?([0-9]+\.[0-9]+) sec .*\s([0-9]+\.?[0-9]+) M?K?bits', l)
-        if len(matches) != 1:
-            continue
-        t, bw = matches[0]
-        ti = float(t)
-        if ti == 2.0: # new start
-            offset += 10
-            if len(currFlow) > 0:
-                yield currFlow
-                currFlow = []
-        currFlow.append({
-            'time': ti + offset,
-            'tpt': float(bw),
-        })
-
-    if len(currFlow) > 0:
-        yield currFlow
