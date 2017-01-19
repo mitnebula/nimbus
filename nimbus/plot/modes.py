@@ -1,0 +1,43 @@
+#!/usr/bin/python
+
+import sys
+from matplotlib import pyplot as plt
+import numpy as np
+
+from read import readNimbusLines, readIperfLines
+
+plt.cla()
+plt.clf()
+
+plt.xlabel('Time (s)')
+plt.ylabel('Mode (0 = delay, 0.5 = test, 1 = xtcp)')
+
+plt.ylim(0,1)
+
+def mkMds(lines):
+    for l in lines:
+        if 'time' in l and 'to' in l:
+            m = 0.1
+            if l['to'] == 'XTCP':
+                m = 0.9
+            elif 'TEST' in l['to']:
+                m = 0.5
+            yield float(l['time']), m
+        elif 'time' in l and 'mode' in l:
+            m = 0.1
+            if l['mode'] == 'XTCP':
+                m = 0.9
+            elif 'TEST' in l['mode']:
+                m = 0.5
+            yield float(l['time']), m
+
+if __name__ == '__main__':
+    with open(sys.argv[1], 'r') as f:
+        nimbus = list(readNimbusLines(f))
+
+    nxa, mds = zip(*mkMds(nimbus))
+
+    plt.plot(nxa, mds)
+
+    plt.show()
+
