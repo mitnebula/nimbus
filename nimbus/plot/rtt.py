@@ -4,39 +4,28 @@ import sys
 from matplotlib import pyplot as plt
 import numpy as np
 
-from read import *
+from read import readNimbusLines
 
 plt.cla()
 plt.clf()
 
 plt.xlabel('Time (s)')
-plt.ylabel('RTT (us)')
+plt.ylabel('RTT (s)')
+
+plt.ylim(0, 0.5)
 
 def rtt(lines):
     for l in lines:
-        yield (l['t'], l['rtt'])
-
-def minrtt(lines):
-    for l in lines:
-        yield (l['t'], l['minrtt'])
+        if 'time' in l and 'rtt' in l:
+            yield (l['time'], l['rtt'])
 
 if __name__ == '__main__':
-    els = list(readLines())
-    xa, rtts = zip(*rtt(els))
-    _, minrtts = zip(*minrtt(els))
+    with open(sys.argv[1], 'r') as f:
+        nimbus = list(readNimbusLines(f))
 
-    start = min(xa)
-    xaxis = np.array(xa) - start
+    xa, rtts = zip(*rtt(nimbus))
 
-    print xaxis[:10]
-    print rtts[:10]
-    print minrtts[:10]
+    plt.plot(xa, rtts, label='rtt')
 
-    plt.ylim(0, 1e5)
-
-    plt.plot(xaxis, rtts, label='rtt')
-    plt.plot(xaxis, minrtts, label='minrtt')
-
-    plt.legend()
     plt.show()
 

@@ -17,10 +17,10 @@ def tpt(lines):
         if 'rout' in l and 'time' in l:
             yield float(l['time']), l['rout']
 
-def itpt(lines, offset):
+def itpt(lines):
     for l in lines:
         if 'time' in l and 'tpt' in l:
-            yield l['time'] + offset, l['tpt']*1e6
+            yield l['time'], l['tpt']*1e6
 
 if __name__ == '__main__':
     with open(sys.argv[1], 'r') as f:
@@ -28,10 +28,8 @@ if __name__ == '__main__':
     with open(sys.argv[2], 'r') as f:
         iperf = list(readIperfLines(f))
 
-    iperfStart = int(sys.argv[3])
-
     nxa, tpt = zip(*tpt(nimbus))
-    ixa, itpt = zip(*itpt(iperf, iperfStart))
+    ixa, itpt = zip(*itpt(iperf))
 
     plt.plot(nxa, tpt, label='nimbus')
     plt.plot(ixa, itpt, label='iperf')

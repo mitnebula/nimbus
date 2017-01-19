@@ -4,7 +4,7 @@ import sys
 from matplotlib import pyplot as plt
 import numpy as np
 
-from read import readNimbusLines, readIperfLines
+from read import readNimbusLines, readShortIperfs
 
 plt.cla()
 plt.clf()
@@ -31,13 +31,22 @@ def mkMds(lines):
                 m = 0.5
             yield float(l['time']), m
 
+def enumIperf(lines):
+    for l in lines:
+        yield l['time'], 0.5
+
 if __name__ == '__main__':
     with open(sys.argv[1], 'r') as f:
         nimbus = list(readNimbusLines(f))
+    with open(sys.argv[2], 'r') as f:
+        iperf = list(readShortIperfs(f))
 
     nxa, mds = zip(*mkMds(nimbus))
-
     plt.plot(nxa, mds)
+
+    for ip in iperf:
+        ixa, ons = zip(*enumIperf(ip))
+        plt.plot(ixa, ons, color='black')
 
     plt.show()
 
