@@ -26,8 +26,11 @@ type Mode int
 const (
 	DELAY Mode = iota
 	XTCP
-	TEST_FROM_DELAY
-	TEST_FROM_XTCP
+	TEST_LOW_RTT_UP_PULSE
+	TEST_LOW_RTT_DOWN_PULSE
+	TEST_HIGH_RTT_UP_PULSE
+	TEST_HIGH_RTT_DOWN_PULSE
+	TEST_WAIT
 )
 
 var flowMode Mode
@@ -126,6 +129,9 @@ func rttUpdater(rtt_history chan int64) {
 			sendTimes.UpdateDuration(rtt * 100)
 			ackTimes.UpdateDuration(rtt * 100)
 			zt_history.UpdateDuration(rtt * 100)
+			xt_history.UpdateDuration(rtt * 100)
+
+			maxQd = 2 * min_rtt
 		}
 
 		rtts.Add(durationLogVal(rtt))

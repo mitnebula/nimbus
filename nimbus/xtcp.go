@@ -117,6 +117,6 @@ func (xt *xtcpDataContainer) increaseXtcpWind(fid uint16) {
 	denom := xt.virtual_cwnds[fid] * float64(xt.numVirtualFlows)
 
 	for f, _ := range xt.virtual_cwnds {
-		xt.virtual_cwnds[f] += 2.0 / denom
+		xt.virtual_cwnds[f] += 1.5 / denom
 	}
 }
