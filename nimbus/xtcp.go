@@ -75,6 +75,9 @@ func (xt *xtcpDataContainer) setXtcpCwnd(flowRate float64) {
 		avgRtt = time.Duration(lv.(durationLogVal)).Seconds()
 	}
 
+	xt.mut.Lock()
+	defer xt.mut.Unlock()
+
 	for vfid := uint16(0); vfid < xt.numVirtualFlows; vfid++ {
 		xt.virtual_cwnds[vfid] = (avgRtt * flowRate) / float64(8*1500*xt.numVirtualFlows)
 	}
