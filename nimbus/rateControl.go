@@ -69,11 +69,11 @@ func switchFromXtcpToTest() {
 	return
 }
 
-func switchFromTestToXtcp() {
+func switchFromTestToXtcp(rtt time.Duration) {
 	fmt.Printf("%v : TEST -> XTCP\n", time.Now().UnixNano())
 	flowMode = XTCP
 	currMode = "XTCP"
-	xtcpData.setXtcpCwnd(flowRate)
+	xtcpData.setXtcpCwnd(flowRate, rtt)
 	switchTime = time.Now()
 	return
 }
@@ -121,7 +121,7 @@ func shouldSwitch(zt float64, rtt time.Duration) {
 		}
 
 		if dZt > delayToTestThresh*est_bandwidth {
-			switchFromTestToXtcp()
+			switchFromTestToXtcp(rtt)
 		}
 	}
 }

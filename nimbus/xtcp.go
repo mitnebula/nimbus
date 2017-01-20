@@ -28,7 +28,7 @@ func init() {
 		drop_time:       make(map[uint16]int64),
 	}
 
-	xtcpData.setXtcpCwnd(flowRate)
+	xtcpData.setXtcpCwnd(flowRate, time.Duration(150)*time.Millisecond)
 	for vfid := uint16(0); vfid < xtcpData.numVirtualFlows; vfid++ {
 		xtcpData.seq_nos[vfid] = 0
 		xtcpData.recv_seq_nos[vfid] = 0
@@ -66,20 +66,12 @@ func (xt *xtcpDataContainer) getNextSeq() (seq uint32, vfid uint16) {
 	return
 }
 
-func (xt *xtcpDataContainer) setXtcpCwnd(flowRate float64) {
-	var avgRtt float64
-	lv, err := rtts.Avg()
-	if err != nil {
-		avgRtt = 0.165
-	} else {
-		avgRtt = time.Duration(lv.(durationLogVal)).Seconds()
-	}
-
+func (xt *xtcpDataContainer) setXtcpCwnd(flowRate float64, rtt time.Duration) {
 	xt.mut.Lock()
 	defer xt.mut.Unlock()
 
 	for vfid := uint16(0); vfid < xt.numVirtualFlows; vfid++ {
-		xt.virtual_cwnds[vfid] = (avgRtt * flowRate) / float64(8*1500*xt.numVirtualFlows)
+		xt.virtual_cwnds[vfid] = (rtt.Seconds() * flowRate) / float64(ONE_PACKET*xt.numVirtualFlows)
 	}
 }
 
