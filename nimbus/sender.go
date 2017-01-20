@@ -215,7 +215,7 @@ func handleAck(
 		ackTimes.Add(recvTime, pkt)
 		recvCount++
 
-		delay := pkt.RecvTime - pkt.Echo // one way delay
-		rtt_history <- delay * 2         // multiply one-way delay by 2
+		delay := Now() - pkt.Echo
+		rtt_history <- delay
 	}
 }
