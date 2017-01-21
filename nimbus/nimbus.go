@@ -50,8 +50,13 @@ func main() {
 	var err error
 	if *mode == "server" {
 		err = Server(*port)
+
+		rt := time.Duration(*runtime) * time.Second
+		endTime = startTime.Add(rt)
 	} else if *mode == "client" {
 		err = Client(*ip, *port)
+
+		endTime = startTime.Add(*runtime)
 	} else if *mode == "sender" {
 		err = Sender(*ip, *port)
 
