@@ -66,12 +66,14 @@ func (xt *xtcpDataContainer) getNextSeq() (seq uint32, vfid uint16) {
 	return
 }
 
-func (xt *xtcpDataContainer) setXtcpCwnd(flowRate float64, rtt time.Duration) {
+func (xt *xtcpDataContainer) setXtcpCwnd(fr float64, rtt time.Duration) {
 	xt.mut.Lock()
 	defer xt.mut.Unlock()
 
+	cwnd := (rtt.Seconds() * fr) / (float64(ONE_PACKET) * float64(xt.numVirtualFlows))
+
 	for vfid := uint16(0); vfid < xt.numVirtualFlows; vfid++ {
-		xt.virtual_cwnds[vfid] = (rtt.Seconds() * flowRate) / float64(ONE_PACKET*xt.numVirtualFlows)
+		xt.virtual_cwnds[vfid] = cwnd
 	}
 }
 
