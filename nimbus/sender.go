@@ -39,7 +39,7 @@ func init() {
 	flowMode = DELAY
 	currMode = "DELAY"
 
-	flowRate = 40e6
+	flowRate = 0
 	min_rtt = time.Duration(999) * time.Hour
 
 	rtts = InitLog(100)

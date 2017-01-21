@@ -7,13 +7,13 @@ import (
 )
 
 const (
-	est_bandwidth = 48e6
-
 	alpha = 1
 
 	// switching parameters
 	xtcpTimeout = 20 // rtts
 )
+
+var est_bandwidth float64
 
 var beta float64
 
@@ -36,6 +36,8 @@ var untilNextUpdate time.Duration
 var currMode string
 
 func init() {
+	est_bandwidth = 10e6
+
 	zt_history = InitTimedLog(min_rtt)
 	xt_history = InitTimedLog(min_rtt)
 	switchTime = time.Now()

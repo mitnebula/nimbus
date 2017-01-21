@@ -13,7 +13,12 @@ var ip = flag.String("ip", "127.0.0.1", "IP to connect to")
 var port = flag.String("port", "42424", "Port to connect to/listen on")
 var mode = flag.String("mode", "client", "server|client|sender|receiver")
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile `file`")
-var runtime = flag.Int("t", 180, "runtime in seconds")
+var runtime = flag.Duration("t", time.Duration(180)*time.Second, "runtime in seconds")
+var numVirtualFlows = flag.Int("numFlows", 1, "number of virtual flows")
+var estBandwidth = flag.Float64("estBandwidth", 24e6, "estimated bandwidth")
+
+// TODO make a slow start-like startup
+var initRate = flag.Float64("initRate", 10e6, "initial sending rate")
 
 var r pktops
 
@@ -45,14 +50,19 @@ func main() {
 	signal.Notify(interrupt, os.Interrupt)
 	go exitStats(interrupt)
 
+	est_bandwidth = *estBandwidth
+	flowRate = *initRate
+
+	xtcpData.numVirtualFlows = uint16(*numVirtualFlows)
+	xtcpData.setXtcpCwnd(flowRate, time.Duration(150)*time.Millisecond)
+
 	startTime = time.Now()
 
 	var err error
 	if *mode == "server" {
 		err = Server(*port)
 
-		rt := time.Duration(*runtime) * time.Second
-		endTime = startTime.Add(rt)
+		endTime = startTime.Add(*runtime)
 	} else if *mode == "client" {
 		err = Client(*ip, *port)
 
@@ -60,8 +70,7 @@ func main() {
 	} else if *mode == "sender" {
 		err = Sender(*ip, *port)
 
-		rt := time.Duration(*runtime) * time.Second
-		endTime = startTime.Add(rt)
+		endTime = startTime.Add(*runtime)
 	} else if *mode == "receiver" {
 		err = Receiver(*port)
 	}

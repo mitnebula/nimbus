@@ -20,7 +20,7 @@ var xtcpData *xtcpDataContainer
 
 func init() {
 	xtcpData = &xtcpDataContainer{
-		numVirtualFlows: 10,
+		numVirtualFlows: 1, // set as runtime flag numFlows
 		currVirtFlow:    0,
 		virtual_cwnds:   make(map[uint16]float64),
 		seq_nos:         make(map[uint16]uint32),
