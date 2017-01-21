@@ -17,20 +17,22 @@ const (
 
 var beta float64
 
-var origFlowRate float64
-var delayToTestThresh float64
+// regularly spaced measurements
 var zt_history *TimedLog
 var xt_history *TimedLog
+
+// test state
+var delayToTestThresh float64
 var switchTime time.Time
 var testTimeout time.Duration
+var origFlowRate float64
+var testResultXtcp bool
 
 var maxQd time.Duration
 
 var untilNextUpdate time.Duration
 
 var currMode string
-
-var testResultXtcp bool
 
 func init() {
 	zt_history = InitTimedLog(min_rtt)
@@ -50,7 +52,9 @@ func init() {
 }
 
 func deltaZt(zt float64, rtt time.Duration) (float64, error) {
+	zt_history.mux.Lock()
 	oldZtVal, _, err := zt_history.Before(time.Now().Add(-1 * rtt))
+	zt_history.mux.Unlock()
 	if err != nil {
 		return 0, err
 	}
@@ -106,7 +110,7 @@ func switchToTest(zt float64, rtt time.Duration) {
 	}
 	origFlowRate = flowRate
 	min_rate := ONE_PACKET / min_rtt.Seconds()
-	to := 1 + math.Max(1, (est_bandwidth/2)/(origFlowRate-min_rate))
+	to := (1 + math.Max(1, (est_bandwidth/2)/(origFlowRate-min_rate)))
 	testTimeout = time.Duration(int64(to*float64(min_rtt.Nanoseconds()))) + 3*rtt
 	// TODO measure rin and rout over min_rtt, change above to 3min_rtt + 2 rtt
 
@@ -222,7 +226,7 @@ func updateRateDelay(
 	beta = (rin / rtt.Seconds()) * 0.33
 	newRate := rin + alpha*(est_bandwidth-zt-rin) - (beta/2)*(rtt.Seconds()-(1.25*min_rtt.Seconds()))
 
-	minRate := 1500 * 8.0 / min_rtt.Seconds() // send at least 1 packet per rtt
+	minRate := float64(ONE_PACKET) / min_rtt.Seconds() // send at least 1 packet per rtt
 	if newRate < minRate || math.IsNaN(newRate) {
 		newRate = minRate
 	}
@@ -230,7 +234,7 @@ func updateRateDelay(
 	return newRate
 }
 
-func measure() (
+func measure(interval time.Duration) (
 	rin float64,
 	rout float64,
 	zt float64,
@@ -242,11 +246,10 @@ func measure() (
 		return
 	}
 	rtt = time.Duration(lv.(durationLogVal))
-
 	rout, oldPkt, newPkt, err := ThroughputFromTimes(
 		ackTimes,
 		time.Now(),
-		rtt,
+		interval,
 	)
 	if err != nil {
 		return
@@ -270,7 +273,7 @@ func measure() (
 		zt = 0
 	}
 
-	fmt.Printf("%v : %v %v %v %v\n", time.Since(startTime), zt, rtt, rin, rout)
+	//fmt.Printf("%v : %v %v %v %v\n", time.Since(startTime), zt, rtt, rin, rout)
 	return
 }
 
@@ -289,18 +292,45 @@ func flowRateUpdater() {
 	}
 }
 
+func measurePeriod() {
+	tick := time.Duration(10) * time.Millisecond
+	for {
+		rin, rout, zt, rtt, err := measure(2 * min_rtt)
+		if err != nil {
+			continue
+		}
+
+		zt_history.Add(time.Now(), zt)
+		xt_history.Add(time.Now(), rtt)
+
+		xt_history.mux.Lock()
+		old_xt, _, err := xt_history.Before(time.Now().Add(-1 * rtt))
+		xt_history.mux.Unlock()
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
+
+		fmt.Printf("%v : %v %v %v %v %v\n", time.Since(startTime), zt, rtt, rin, rout, old_xt)
+		<-time.After(tick)
+	}
+}
+
 func doUpdate() {
-	rin, _, zt, rtt, err := measure()
+	lv, err := rtts.Latest()
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
+	rtt := time.Duration(lv.(durationLogVal))
 
+	rin, _, zt, _, err := measure(rtt)
+	if err != nil {
+		return
+	}
 	flowRateLock.Lock()
 
 	shouldSwitch(zt, rtt)
-	zt_history.Add(time.Now(), zt)
-	xt_history.Add(time.Now(), rtt)
 
 	switch flowMode {
 	case DELAY:

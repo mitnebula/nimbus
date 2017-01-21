@@ -42,7 +42,7 @@ func init() {
 	flowRate = 40e6
 	min_rtt = time.Duration(999) * time.Hour
 
-	rtts = InitLog(1000)
+	rtts = InitLog(100)
 	sendTimes = InitTimedLog(min_rtt)
 	ackTimes = InitTimedLog(min_rtt)
 
@@ -66,6 +66,7 @@ func Server(port string) error {
 
 	go handleAck(conn, addr, rtt_history)
 	go flowRateUpdater()
+	go measurePeriod()
 	go output()
 
 	startTime = time.Now()
@@ -92,6 +93,7 @@ func Sender(ip string, port string) error {
 
 	go handleAck(conn, toAddr, rtt_history)
 	go flowRateUpdater()
+	go measurePeriod()
 	go output()
 
 	startTime = time.Now()
