@@ -97,6 +97,7 @@ func synAckExchange(conn *net.UDPConn, expSrc *net.UDPAddr, rtt_history chan int
 
 	xtcpData.checkXtcpSeq(ack.VirtFid, ack.SeqNo)
 
+	// TODO fix
 	delay := ack.RecvTime - ack.Echo // one way delay
 	rtt_history <- delay * 2         // multiply one-way delay by 2
 

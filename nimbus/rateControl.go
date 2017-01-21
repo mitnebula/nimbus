@@ -80,7 +80,6 @@ func switchFromTestToDelay(rtt time.Duration) {
 	flowMode = DELAY
 	currMode = "DELAY"
 	flowRate = origFlowRate
-	//xtcpData.setXtcpCwnd(flowRate, rtt)
 	switchTime = time.Now()
 	return
 }
@@ -118,9 +117,6 @@ func switchToTest(zt float64, rtt time.Duration) {
 
 func switchFromTestToXtcp(rtt time.Duration) {
 	fmt.Printf("%v : %s -> XTCP\n", time.Since(startTime), currMode)
-	//if flowMode != TEST_LOW_RTT && flowMode != TEST_HIGH_RTT {
-	//	panic(false)
-	//}
 
 	flowMode = XTCP
 	currMode = "XTCP"
@@ -195,10 +191,6 @@ func shouldSwitch(zt float64, rtt time.Duration) {
 			return
 		}
 
-		//if flowMode == DELAY {
-		//	panic(false)
-		//}
-
 		if dZt < -1*delayToTestThresh {
 			//fmt.Println(time.Since(startTime), dZt, delayToTestThresh, rtt, zt)
 			testResultXtcp = true
@@ -235,7 +227,6 @@ func updateRateDelay(
 		newRate = minRate
 	}
 
-	//fmt.Printf(" alpha_term: %.3v beta_term: %.3v rate: %.3v -> %.3v\n", alpha*(est_bandwidth-zt-rin), beta*(rtt.Seconds()-(1.1*min_rtt.Seconds())), rt, newRate)
 	return newRate
 }
 
@@ -279,16 +270,7 @@ func measure() (
 		zt = 0
 	}
 
-	//fmt.Printf("time: %v rtt: %v/%v rin: %.3v rout: %.3v zt: %.3v", Now(), rtt, min_rtt, rin, rout, zt)
-
-	//lv, err = rtts.Avg()
-	//if err != nil {
-	//	avgRtt = rtt
-	//}
-	//avgRtt = time.Duration(lv.(durationLogVal))
-
 	fmt.Printf("%v : %v %v %v %v\n", time.Since(startTime), zt, rtt, rin, rout)
-
 	return
 }
 
