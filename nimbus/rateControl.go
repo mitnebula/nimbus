@@ -26,6 +26,7 @@ var delayToTestThresh float64
 var switchTime time.Time
 var testTimeout time.Duration
 var origFlowRate float64
+var testPulses int
 var testResultXtcp bool
 
 var maxQd time.Duration
@@ -97,6 +98,7 @@ func switchToTest(zt float64, rtt time.Duration) {
 	}
 
 	rttThresh := min_rtt + maxQd/2
+	testPulses = 10
 	if rtt > rttThresh {
 		flowMode = TEST_HIGH_RTT_DOWN_PULSE
 		delayToTestThresh = zt * (0.5 * min_rtt.Seconds()) / (rtt.Seconds())
@@ -110,7 +112,7 @@ func switchToTest(zt float64, rtt time.Duration) {
 	}
 	origFlowRate = flowRate
 	min_rate := ONE_PACKET / min_rtt.Seconds()
-	to := (1 + math.Max(1, (est_bandwidth/2)/(origFlowRate-min_rate)))
+	to := (1 + math.Max(1, (est_bandwidth/2)/(origFlowRate-min_rate))) * float64(testPulses)
 	testTimeout = time.Duration(int64(to*float64(min_rtt.Nanoseconds()))) + 3*rtt
 	// TODO measure rin and rout over min_rtt, change above to 3min_rtt + 2 rtt
 
@@ -355,12 +357,22 @@ func doUpdate() {
 		min_rate := ONE_PACKET / min_rtt.Seconds()
 		to := math.Max(1, (est_bandwidth/2)/(origFlowRate-min_rate))
 		untilNextUpdate = time.Duration(int64(to * float64(min_rtt.Nanoseconds())))
-		flowMode = TEST_WAIT
+		if testPulses <= 0 {
+			flowMode = TEST_WAIT
+		} else {
+			testPulses--
+			flowMode = TEST_LOW_RTT_UP_PULSE
+		}
 
 	case TEST_HIGH_RTT_UP_PULSE:
 		flowRate = updateRateTestUpPulse(flowRate)
 		untilNextUpdate = min_rtt
-		flowMode = TEST_WAIT
+		if testPulses <= 0 {
+			flowMode = TEST_WAIT
+		} else {
+			testPulses--
+			flowMode = TEST_HIGH_RTT_DOWN_PULSE
+		}
 
 	case TEST_HIGH_RTT_DOWN_PULSE:
 		flowRate = updateRateTestDownPulse(flowRate)
