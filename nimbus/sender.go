@@ -70,6 +70,7 @@ func Server(port string) error {
 	go output()
 
 	startTime = time.Now()
+	switchTime = startTime
 	go send(conn)
 
 	return nil
@@ -97,6 +98,7 @@ func Sender(ip string, port string) error {
 	go output()
 
 	startTime = time.Now()
+	switchTime = startTime
 	go send(conn)
 
 	return nil

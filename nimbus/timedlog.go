@@ -37,6 +37,7 @@ func (l *TimedLog) Add(t time.Time, it TimedLogVal) {
 	l.mux.Lock()
 	defer l.mux.Unlock()
 
+	// TODO support duplicate values
 	if t, ok := l.m[it]; ok {
 		// duplicate value. remove old one.
 		delete(l.m, it)
@@ -93,6 +94,34 @@ func (l *TimedLog) Before(wanted time.Time) (TimedLogVal, time.Time, error) {
 
 	lastTime := l.times[len(l.times)-1]
 	return l.t[lastTime], lastTime, nil
+}
+
+func (l *TimedLog) AvgBetween(
+	from time.Time,
+	to time.Time,
+	zero TimedLogVal,
+	sum func(a TimedLogVal, b TimedLogVal) TimedLogVal,
+	div func(a TimedLogVal, n int) TimedLogVal,
+) (TimedLogVal, error) {
+	cum := zero
+	count := 0
+	// TODO binary search
+	for _, t := range l.times {
+		if t.After(from) {
+			if t.Before(to) {
+				cum = sum(cum, l.t[t])
+				count++
+			} else {
+				break
+			}
+		}
+	}
+
+	if count == 0 {
+		return 0, fmt.Errorf("timed log: no values to avg")
+	}
+
+	return div(cum, count), nil
 }
 
 func (l *TimedLog) NumItemsBetween(start time.Time, end time.Time) (int, error) {
