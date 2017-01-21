@@ -50,12 +50,19 @@ func init() {
 }
 
 func deltaZt(zt float64, rtt time.Duration) (float64, error) {
-	oldZt, _, err := zt_history.Before(time.Now().Add(-1 * rtt))
+	oldZtVal, _, err := zt_history.Before(time.Now().Add(-1 * rtt))
 	if err != nil {
 		return 0, err
 	}
 
-	return zt - oldZt.(float64), nil
+	oldZt := oldZtVal.(float64)
+
+	if zt == 0 || oldZt == 0 {
+		// zt is invalid
+		return 0, fmt.Errorf("invalid zt")
+	}
+
+	return zt - oldZt, nil
 }
 
 func deltaXt(rtt time.Duration) (float64, error) {
@@ -125,7 +132,7 @@ func switchFromTestToXtcp(rtt time.Duration) {
 
 func shouldSwitch(zt float64, rtt time.Duration) {
 	elapsed := time.Since(switchTime)
-	if elapsed < 3*min_rtt {
+	if elapsed < 3*min_rtt || zt == 0 {
 		return
 	}
 
