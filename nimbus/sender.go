@@ -26,11 +26,6 @@ type Mode int
 const (
 	DELAY Mode = iota
 	XTCP
-	TEST_LOW_RTT_UP_PULSE
-	TEST_LOW_RTT_DOWN_PULSE
-	TEST_HIGH_RTT_UP_PULSE
-	TEST_HIGH_RTT_DOWN_PULSE
-	TEST_WAIT
 )
 
 var flowMode Mode
@@ -70,7 +65,7 @@ func Server(port string) error {
 	go output()
 
 	startTime = time.Now()
-	switchTime = startTime
+	modeSwitchTime = startTime
 	go send(conn)
 
 	return nil
@@ -98,7 +93,7 @@ func Sender(ip string, port string) error {
 	go output()
 
 	startTime = time.Now()
-	switchTime = startTime
+	modeSwitchTime = startTime
 	go send(conn)
 
 	return nil
