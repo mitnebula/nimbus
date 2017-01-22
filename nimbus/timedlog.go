@@ -103,6 +103,9 @@ func (l *TimedLog) AvgBetween(
 	sum func(a TimedLogVal, b TimedLogVal) TimedLogVal,
 	div func(a TimedLogVal, n int) TimedLogVal,
 ) (TimedLogVal, error) {
+	l.mux.Lock()
+	defer l.mux.Unlock()
+
 	cum := zero
 	count := 0
 	// TODO binary search
