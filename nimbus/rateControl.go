@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	//"math"
+	"math"
 	"time"
 )
 
@@ -74,7 +74,9 @@ func deltaZt(zt float64, delay time.Duration) (float64, error) {
 }
 
 func deltaXt(from time.Time, rtt time.Duration, delay time.Duration) (float64, error) {
+	xt_history.mux.Lock()
 	oldXt, _, err := xt_history.Before(from.Add(-1 * delay))
+	xt_history.mux.Unlock()
 	if err != nil {
 		return 0, err
 	}
@@ -94,24 +96,20 @@ func switchFromTestToDelay(rtt time.Duration) {
 
 func switchToTest(zt float64, rtt time.Duration) {
 	testResultXtcp = false
-	//if rtt.Seconds() < min_rtt.Seconds()*1.25 {
-	//	return
-	//} else if rtt.Seconds() > 0.25*min_rtt.Seconds()+maxQd.Seconds() {
-	//	return
-	//}
+	if rtt.Seconds() < min_rtt.Seconds()*1.25 {
+		return
+	} else if rtt.Seconds() > 0.25*min_rtt.Seconds()+maxQd.Seconds() {
+		return
+	}
 
 	rttThresh := min_rtt + maxQd/2
 	totElasticity = 0
-	testPulses = 1000
+	testPulses = 50
 	if rtt > rttThresh {
 		flowMode = TEST_HIGH_RTT_DOWN_PULSE
-		//delayToTestThresh = zt * (0.5 * min_rtt.Seconds()) / (rtt.Seconds())
-		//delayToTestThresh = math.Max(delayToTestThresh, 0.05*est_bandwidth) / 2
 		currMode = "TEST_HIGH_RTT"
 	} else {
 		flowMode = TEST_LOW_RTT_UP_PULSE
-		//delayToTestThresh = zt * (0.5 * min_rtt.Seconds()) / (rtt.Seconds() + 0.5*min_rtt.Seconds())
-		//delayToTestThresh = math.Max(delayToTestThresh, 0.05*est_bandwidth) / 2
 		currMode = "TEST_LOW_RTT"
 	}
 	//origFlowRate = flowRate
@@ -125,12 +123,7 @@ func switchToTest(zt float64, rtt time.Duration) {
 	}
 
 	origFlowRate = rout
-
-	//min_rate := ONE_PACKET / min_rtt.Seconds()
-	//to := (1 + math.Max(1, (est_bandwidth/2)/(origFlowRate-min_rate))) * float64(testPulses)
-	//testTimeout = time.Duration(int64(to*float64(min_rtt.Nanoseconds()))) + 3*rtt
-	testTimeout = time.Duration(int64(testPulses)*2*min_rtt.Nanoseconds() + 2*rtt.Nanoseconds())
-	// TODO measure rin and rout over min_rtt, change above to 3min_rtt + 2 rtt
+	testTimeout = time.Duration(int64(testPulses)*min_rtt.Nanoseconds() + 2*rtt.Nanoseconds())
 
 	fmt.Printf("%v : %s -> TEST %v %v\n", time.Since(startTime), currMode, delayToTestThresh, origFlowRate)
 	switchTime = time.Now()
@@ -156,38 +149,34 @@ func shouldSwitch(zt float64, rtt time.Duration) {
 
 	switch flowMode {
 	case DELAY:
-		if elapsed > time.Duration(7)*time.Second {
-			fmt.Println("TEST TEST")
+		if elapsed > xtcpTimeout*min_rtt {
 			switchToTest(zt, rtt)
 		}
-		//if elapsed > xtcpTimeout*min_rtt {
-		//	switchToTest(zt, rtt)
-		//}
 
 		// if delta zt > alpha * mu
 		// go to test
-		//dZt, err := deltaZt(zt, rtt)
-		//if err != nil {
-		//	return
-		//}
+		dZt, err := deltaZt(zt, rtt)
+		if err != nil {
+			return
+		}
 
-		//if dZt > delayToTestThresh*est_bandwidth {
-		//	switchToTest(zt, rtt)
-		//	return
-		//}
+		if dZt > delayToTestThresh*est_bandwidth {
+			switchToTest(zt, rtt)
+			return
+		}
 
-		//// else if rtt > thresh and is increasing
-		//// go to test
-		//rttThresh := time.Duration(1.5*float64(min_rtt.Nanoseconds())) * time.Nanosecond
-		//dXt, err := deltaXt(time.Now(), rtt, rtt)
-		//if err != nil {
-		//	return
-		//}
+		// else if rtt > thresh and is increasing
+		// go to test
+		rttThresh := time.Duration(1.5*float64(min_rtt.Nanoseconds())) * time.Nanosecond
+		dXt, err := deltaXt(time.Now(), rtt, rtt)
+		if err != nil {
+			return
+		}
 
-		//if rtt > rttThresh && dXt > 0 {
-		//	switchToTest(zt, rtt)
-		//	return
-		//}
+		if rtt > rttThresh && dXt > 0 {
+			switchToTest(zt, rtt)
+			return
+		}
 		break
 	case XTCP:
 		// if timeout expires
@@ -201,6 +190,7 @@ func shouldSwitch(zt float64, rtt time.Duration) {
 		// go to delay
 
 		if elapsed > testTimeout {
+			totElasticity = 0
 			if testResultXtcp {
 				switchFromTestToXtcp(rtt)
 			} else {
@@ -217,24 +207,19 @@ func shouldSwitch(zt float64, rtt time.Duration) {
 	case TEST_HIGH_RTT_UP_PULSE:
 		fallthrough
 	case TEST_HIGH_RTT_DOWN_PULSE:
-		if totElasticity < -0.15 {
+		if totElasticity < -0.1 {
 			testResultXtcp = true
 			//switchFromTestToXtcp(rtt)
-			//totElasticity = 0
 		}
 		break
 	}
 }
 
 func updateRateTestUpPulse(rt float64) float64 {
-	//min_rate := ONE_PACKET / min_rtt.Seconds()
-	//return origFlowRate + est_bandwidth/2
 	return origFlowRate * 1.5 // - min_rate
 }
 
 func updateRateTestDownPulse(rt float64) float64 {
-	//min_rate := ONE_PACKET / min_rtt.Seconds()
-	//return math.Max(origFlowRate-est_bandwidth/2, min_rate)
 	return origFlowRate * 0.5
 }
 
@@ -249,17 +234,15 @@ func updateRateDelay(
 	zt float64,
 	rtt time.Duration,
 ) float64 {
-	//beta = (rin / rtt.Seconds()) * 0.33
-	//newRate := rin + alpha*(est_bandwidth-zt-rin) - (beta/2)*(rtt.Seconds()-(1.25*min_rtt.Seconds()))
+	beta = (rin / rtt.Seconds()) * 0.33
+	newRate := rin + alpha*(est_bandwidth-zt-rin) - (beta/2)*(rtt.Seconds()-(1.25*min_rtt.Seconds()))
 
-	//minRate := float64(ONE_PACKET) / min_rtt.Seconds() // send at least 1 packet per rtt
-	//if newRate < minRate || math.IsNaN(newRate) {
-	//	newRate = minRate
-	//}
+	minRate := float64(ONE_PACKET) / min_rtt.Seconds() // send at least 1 packet per rtt
+	if newRate < minRate || math.IsNaN(newRate) {
+		newRate = minRate
+	}
 
-	//return newRate
-
-	return flowRate
+	return newRate
 }
 
 func measure(interval time.Duration) (
@@ -426,9 +409,6 @@ func doUpdate() {
 
 	case TEST_LOW_RTT_DOWN_PULSE:
 		flowRate = updateRateTestDownPulse(flowRate)
-		//min_rate := ONE_PACKET / min_rtt.Seconds()
-		//to := math.Max(1, (est_bandwidth/2)/(origFlowRate-min_rate))
-		//untilNextUpdate = time.Duration(int64(to * float64(min_rtt.Nanoseconds())))
 		untilNextUpdate = 1 * min_rtt
 		testPulses--
 		if testPulses <= 0 {
@@ -449,9 +429,6 @@ func doUpdate() {
 
 	case TEST_HIGH_RTT_DOWN_PULSE:
 		flowRate = updateRateTestDownPulse(flowRate)
-		//min_rate := ONE_PACKET / min_rtt.Seconds()
-		//to := math.Max(1, (est_bandwidth/2)/(origFlowRate-min_rate))
-		//untilNextUpdate = time.Duration(int64(to * float64(min_rtt.Nanoseconds())))
 		untilNextUpdate = 1 * min_rtt
 		testPulses--
 		if testPulses <= 0 {
