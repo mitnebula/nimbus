@@ -11,7 +11,7 @@ func Now() int64 {
 }
 
 func ThroughputFromTimes(
-	times *TimedLog,
+	times *PacketLog,
 	now time.Time,
 	delay time.Duration,
 ) (float64, Packet, Packet, error) {
@@ -22,26 +22,22 @@ func ThroughputFromTimes(
 		return 0, Packet{}, Packet{}, fmt.Errorf("not enough values")
 	}
 
-	newestPktIt, newestPktTime, err := times.Before(now)
+	newestPkt, newestPktTime, err := times.Before(now)
 	if err != nil {
 		return 0, Packet{}, Packet{}, err
 	}
 
-	newestPkt := newestPktIt.(Packet)
-
-	oldestPktIt, oldestPktTime, err := times.Before(now.Add(-1 * delay))
+	oldestPkt, oldestPktTime, err := times.Before(now.Add(-1 * delay))
 	if err != nil {
 		return 0, Packet{}, Packet{}, err
 	}
 
 	for newestPktTime.Equal(oldestPktTime) {
-		oldestPktIt, oldestPktTime, err = times.Before(newestPktTime.Add(-1 * time.Nanosecond))
+		oldestPkt, oldestPktTime, err = times.Before(newestPktTime.Add(-1 * time.Nanosecond))
 		if err != nil {
 			return 0, Packet{}, Packet{}, err
 		}
 	}
-
-	oldestPkt := oldestPktIt.(Packet)
 
 	dur := newestPktTime.Sub(oldestPktTime).Seconds()
 	cnt, _ := times.NumItemsBetween(oldestPktTime, newestPktTime)
@@ -55,7 +51,7 @@ func ThroughputFromTimes(
 }
 
 func PacketTimes(
-	times *TimedLog,
+	times *PacketLog,
 	oldPkt Packet,
 	newPkt Packet,
 ) (time.Time, time.Time, error) {

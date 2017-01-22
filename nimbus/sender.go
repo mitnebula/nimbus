@@ -18,8 +18,8 @@ var min_rtt time.Duration
 
 // Log is thread-safe
 var rtts *Log
-var sendTimes *TimedLog
-var ackTimes *TimedLog
+var sendTimes *PacketLog
+var ackTimes *PacketLog
 
 type Mode int
 
@@ -43,8 +43,8 @@ func init() {
 	min_rtt = time.Duration(999) * time.Hour
 
 	rtts = InitLog(100)
-	sendTimes = InitTimedLog(min_rtt)
-	ackTimes = InitTimedLog(min_rtt)
+	sendTimes = InitPacketLog(min_rtt)
+	ackTimes = InitPacketLog(min_rtt)
 
 	sendCount = 0
 	recvCount = 0

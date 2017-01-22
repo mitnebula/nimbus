@@ -10,7 +10,6 @@ type TimedLogVal interface{}
 
 type TimedLog struct {
 	length time.Duration             // constraint on newest time - oldest time
-	m      map[TimedLogVal]time.Time // seqno -> time
 	t      map[time.Time]TimedLogVal // time -> seqno
 	times  []time.Time               // sorted slice of keys in map
 	mux    sync.Mutex                // for thread-safeness
@@ -19,7 +18,6 @@ type TimedLog struct {
 func InitTimedLog(d time.Duration) *TimedLog {
 	return &TimedLog{
 		length: d,
-		m:      make(map[TimedLogVal]time.Time),
 		t:      make(map[time.Time]TimedLogVal),
 		times:  make([]time.Time, 0),
 	}
@@ -37,27 +35,11 @@ func (l *TimedLog) Add(t time.Time, it TimedLogVal) {
 	l.mux.Lock()
 	defer l.mux.Unlock()
 
-	// TODO support duplicate values
-	if t, ok := l.m[it]; ok {
-		// duplicate value. remove old one.
-		delete(l.m, it)
-		delete(l.t, t)
-		// remove from times
-		// TODO binary search
-		for i, v := range l.times {
-			if v == t {
-				l.times = append(l.times[:i], l.times[i+1:]...)
-				break
-			}
-		}
-	}
-
 	l.times = append(l.times, t)
-	l.m[it] = t
 	l.t[t] = it
 
-	if len(l.times) != len(l.m) {
-		err := fmt.Errorf("TimedLog in inconsistent state: %v %v", len(l.times), len(l.m))
+	if len(l.times) != len(l.t) {
+		err := fmt.Errorf("TimedLog in inconsistent state: %v %v", len(l.times), len(l.t))
 		panic(err)
 	}
 
@@ -65,9 +47,7 @@ func (l *TimedLog) Add(t time.Time, it TimedLogVal) {
 	// remove older, keep at least 100
 	for len(l.times) > 100 && lastTime.Sub(l.times[0]) > l.length {
 		rem := l.times[0]
-		seq, _ := l.t[rem] // seq
 		delete(l.t, rem)
-		delete(l.m, seq)
 		l.times = l.times[1:]
 	}
 }

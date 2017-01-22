@@ -9,7 +9,7 @@ import (
 // the log can store items and retrieve them
 func TestAddOne(t *testing.T) {
 	dummyPacket := Packet{}
-	lg := InitTimedLog(time.Duration(10) * time.Millisecond)
+	lg := InitPacketLog(time.Duration(10) * time.Millisecond)
 
 	tm := time.Now()
 	lg.Add(tm, dummyPacket)
@@ -31,7 +31,7 @@ func TestAddOne(t *testing.T) {
 
 // the legnth of the log doesn't exceed its time allotment
 func TestTimeLimit(t *testing.T) {
-	lg := InitTimedLog(time.Duration(5) * time.Millisecond)
+	lg := InitPacketLog(time.Duration(5) * time.Millisecond)
 
 	tm := time.Now()
 	stopAdd := tm.Add(time.Duration(50) * time.Millisecond)
@@ -54,7 +54,7 @@ func TestTimeLimit(t *testing.T) {
 
 // the log always has at least 100 items
 func TestCountLimit(t *testing.T) {
-	lg := InitTimedLog(time.Duration(1) * time.Millisecond)
+	lg := InitPacketLog(time.Duration(1) * time.Millisecond)
 
 	tm := time.Now()
 	stopAdd := tm.Add(time.Duration(300) * time.Millisecond)
