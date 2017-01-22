@@ -13,6 +13,14 @@ const (
 	xtcpTimeout = 20 // rtts
 )
 
+type PulseMode int
+
+const (
+	UP_PULSE PulseMode = iota
+	DOWN_PULSE
+	PULSE_WAIT
+)
+
 var est_bandwidth float64
 
 var beta float64
@@ -22,12 +30,9 @@ var zt_history *TimedLog
 var xt_history *TimedLog
 
 // test state
-var delayToTestThresh float64
+var pulseMode PulseMode
 var switchTime time.Time
-var testTimeout time.Duration
-var origFlowRate float64
-var testPulses int
-var testResultXtcp bool
+var elasticityReset time.Time
 var totElasticity float64
 
 var maxQd time.Duration
@@ -41,18 +46,16 @@ func init() {
 
 	zt_history = InitTimedLog(min_rtt)
 	xt_history = InitTimedLog(min_rtt)
-	switchTime = time.Now()
 
 	// (est_bandwidth / min_rtt) * C where 0 < C < 1, use C = 0.4
 	beta = (flowRate / 0.001) * 0.33
-	origFlowRate = flowRate
 
 	// TODO tracking
 	maxQd = 2 * min_rtt
-	testTimeout = maxQd
-	delayToTestThresh = 0.05 * est_bandwidth
 
-	testResultXtcp = false
+	switchTime = time.Now()
+	elasticityReset = switchTime
+	pulseMode = PULSE_WAIT
 }
 
 func deltaZt(zt float64, delay time.Duration) (float64, error) {
@@ -84,147 +87,23 @@ func deltaXt(from time.Time, rtt time.Duration, delay time.Duration) (float64, e
 	return rtt.Seconds() - oldXt.(time.Duration).Seconds(), nil
 }
 
-func switchFromTestToDelay(rtt time.Duration) {
+func switchToDelay(rtt time.Duration) {
 	fmt.Printf("%v : %s -> DELAY\n", time.Since(startTime), currMode)
 
 	flowMode = DELAY
 	currMode = "DELAY"
-	flowRate = origFlowRate
 	switchTime = time.Now()
 	return
 }
 
-func switchToTest(zt float64, rtt time.Duration) {
-	testResultXtcp = false
-	if rtt.Seconds() < min_rtt.Seconds()*1.25 {
-		return
-	} else if rtt.Seconds() > 0.25*min_rtt.Seconds()+maxQd.Seconds() {
-		return
-	}
-
-	rttThresh := min_rtt + maxQd/2
-	totElasticity = 0
-	testPulses = 50
-	if rtt > rttThresh {
-		flowMode = TEST_HIGH_RTT_DOWN_PULSE
-		currMode = "TEST_HIGH_RTT"
-	} else {
-		flowMode = TEST_LOW_RTT_UP_PULSE
-		currMode = "TEST_LOW_RTT"
-	}
-	//origFlowRate = flowRate
-	rout, _, _, err := ThroughputFromTimes(
-		ackTimes,
-		time.Now(),
-		rtt,
-	)
-	if err != nil {
-		return
-	}
-
-	origFlowRate = rout
-	testTimeout = time.Duration(int64(testPulses)*min_rtt.Nanoseconds() + 2*rtt.Nanoseconds())
-
-	fmt.Printf("%v : %s -> TEST %v %v\n", time.Since(startTime), currMode, delayToTestThresh, origFlowRate)
-	switchTime = time.Now()
-	return
-}
-
-func switchFromTestToXtcp(rtt time.Duration) {
+func switchToXtcp(rtt time.Duration) {
 	fmt.Printf("%v : %s -> XTCP\n", time.Since(startTime), currMode)
 
 	flowMode = XTCP
 	currMode = "XTCP"
-	flowRate = origFlowRate
 	xtcpData.setXtcpCwnd(flowRate, rtt)
 	switchTime = time.Now()
 	return
-}
-
-func shouldSwitch(zt float64, rtt time.Duration) {
-	elapsed := time.Since(switchTime)
-	if elapsed < 3*min_rtt || zt == 0 {
-		return
-	}
-
-	switch flowMode {
-	case DELAY:
-		if elapsed > xtcpTimeout*min_rtt {
-			switchToTest(zt, rtt)
-		}
-
-		// if delta zt > alpha * mu
-		// go to test
-		dZt, err := deltaZt(zt, rtt)
-		if err != nil {
-			return
-		}
-
-		if dZt > delayToTestThresh*est_bandwidth {
-			switchToTest(zt, rtt)
-			return
-		}
-
-		// else if rtt > thresh and is increasing
-		// go to test
-		rttThresh := time.Duration(1.5*float64(min_rtt.Nanoseconds())) * time.Nanosecond
-		dXt, err := deltaXt(time.Now(), rtt, rtt)
-		if err != nil {
-			return
-		}
-
-		if rtt > rttThresh && dXt > 0 {
-			switchToTest(zt, rtt)
-			return
-		}
-		break
-	case XTCP:
-		// if timeout expires
-		// go to test
-		if elapsed > xtcpTimeout*min_rtt {
-			switchToTest(zt, rtt)
-		}
-		break
-	case TEST_WAIT:
-		// if timeout expires
-		// go to delay
-
-		if elapsed > testTimeout {
-			totElasticity = 0
-			if testResultXtcp {
-				switchFromTestToXtcp(rtt)
-			} else {
-				switchFromTestToDelay(rtt)
-			}
-		} else if testResultXtcp {
-			return
-		}
-		fallthrough
-	case TEST_LOW_RTT_UP_PULSE:
-		fallthrough
-	case TEST_LOW_RTT_DOWN_PULSE:
-		fallthrough
-	case TEST_HIGH_RTT_UP_PULSE:
-		fallthrough
-	case TEST_HIGH_RTT_DOWN_PULSE:
-		if totElasticity < -0.1 {
-			testResultXtcp = true
-			//switchFromTestToXtcp(rtt)
-		}
-		break
-	}
-}
-
-func updateRateTestUpPulse(rt float64) float64 {
-	return origFlowRate * 1.5 // - min_rate
-}
-
-func updateRateTestDownPulse(rt float64) float64 {
-	return origFlowRate * 0.5
-}
-
-func updateRateTestWait(rt float64) float64 {
-	return origFlowRate
 }
 
 func updateRateDelay(
@@ -368,21 +247,46 @@ func measurePeriod() {
 	}
 }
 
+func changePulses(fr float64, rtt time.Duration) float64 {
+	if time.Since(switchTime) < min_rtt {
+		return fr
+	}
+
+	switch pulseMode {
+	case UP_PULSE:
+		pulseMode = DOWN_PULSE
+		return fr * 1.25
+	case DOWN_PULSE:
+		pulseMode = UP_PULSE
+		return fr * 0.75
+	}
+
+	switchTime = time.Now()
+	return fr
+}
+
 func doUpdate() {
-	lv, err := rtts.Latest()
+	rin, _, zt, rtt, err := measure(min_rtt)
 	if err != nil {
-		fmt.Println(err)
 		return
 	}
-	rtt := time.Duration(lv.(durationLogVal))
 
-	rin, _, zt, _, err := measure(min_rtt)
-	if err != nil {
-		return
+	fmt.Println("ELAST", time.Since(elasticityReset), totElasticity)
+	if time.Since(elasticityReset) > 3*min_rtt && totElasticity < -0.02 {
+		if flowMode == DELAY {
+			switchToXtcp(rtt)
+		}
+		totElasticity = 0
+		elasticityReset = time.Now()
+	} else if time.Since(elasticityReset) > time.Duration(3)*time.Second {
+		if flowMode == XTCP {
+			switchToDelay(rtt)
+		}
+		elasticityReset = time.Now()
+		totElasticity = 0
 	}
+
 	flowRateLock.Lock()
-
-	shouldSwitch(zt, rtt)
 
 	switch flowMode {
 	case DELAY:
@@ -396,50 +300,9 @@ func doUpdate() {
 
 	case XTCP:
 		flowRate = xtcpData.updateRateXtcp(rtt)
-
-	case TEST_LOW_RTT_UP_PULSE:
-		flowRate = updateRateTestUpPulse(flowRate)
-		untilNextUpdate = 1 * min_rtt
-		testPulses--
-		if testPulses <= 0 {
-			flowMode = TEST_WAIT
-		} else {
-			flowMode = TEST_LOW_RTT_DOWN_PULSE
-		}
-
-	case TEST_LOW_RTT_DOWN_PULSE:
-		flowRate = updateRateTestDownPulse(flowRate)
-		untilNextUpdate = 1 * min_rtt
-		testPulses--
-		if testPulses <= 0 {
-			flowMode = TEST_WAIT
-		} else {
-			flowMode = TEST_LOW_RTT_UP_PULSE
-		}
-
-	case TEST_HIGH_RTT_UP_PULSE:
-		flowRate = updateRateTestUpPulse(flowRate)
-		untilNextUpdate = 1 * min_rtt
-		testPulses--
-		if testPulses <= 0 {
-			flowMode = TEST_WAIT
-		} else {
-			flowMode = TEST_HIGH_RTT_DOWN_PULSE
-		}
-
-	case TEST_HIGH_RTT_DOWN_PULSE:
-		flowRate = updateRateTestDownPulse(flowRate)
-		untilNextUpdate = 1 * min_rtt
-		testPulses--
-		if testPulses <= 0 {
-			flowMode = TEST_WAIT
-		} else {
-			flowMode = TEST_HIGH_RTT_UP_PULSE
-		}
-
-	case TEST_WAIT:
-		flowRate = updateRateTestWait(flowRate)
 	}
+
+	flowRate = changePulses(flowRate, rtt)
 
 	if flowRate < 0 {
 		panic("negative flow rate")
