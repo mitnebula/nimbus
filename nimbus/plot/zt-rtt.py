@@ -16,7 +16,7 @@ def read():
             sp = line.split()
             if '->' in sp:
                 yield parseSwitchOutput(sp)
-            elif len(sp) == 6:
+            elif len(sp) == 9:
                 if sp[1] != ':':
                     continue
                 t = parseTime(sp[0])
@@ -24,12 +24,18 @@ def read():
                 rtt = parseTime(sp[3])
                 rin = float(sp[4])
                 rout = float(sp[5])
+                elast = float(sp[6])
+                setRate = float(sp[7])
+                yt = parseTime(sp[8])
                 yield {
                     'time': t,
                     'zt': zt,
                     'rtt': rtt,
                     'rin': rin,
                     'rout': rout,
+                    'elast': elast,
+                    'fr': setRate,
+                    'yt': yt,
                 }
             else:
                 print sp
@@ -44,6 +50,11 @@ def rtt(ls):
         if 'time' in l and 'rtt' in l:
             yield l['time'], l['rtt']
 
+def elast(ls):
+    for l in ls:
+        if 'time' in l and 'elast' in l:
+            yield l['time'], l['elast']
+
 def rin(ls):
     for l in ls:
         if 'time' in l and 'rin' in l:
@@ -53,6 +64,11 @@ def rout(ls):
     for l in ls:
         if 'time' in l and 'rout' in l:
             yield l['time'], l['rout']/1e6
+
+def setRate(ls):
+    for l in ls:
+        if 'time' in l and 'fr' in l:
+            yield l['time'], l['fr']/1e6
 
 def switches(ls):
     for l in ls:
@@ -68,6 +84,22 @@ def vlines(p, sw):
         else:
             p.axvline(t, color='gray')
 
+def derivative(times, nums):
+    x = zip(times, nums)
+    curr = x[0]
+    for n in x[1:]:
+        dn = n[1] - curr[1]
+        yield dn
+        curr = n
+
+def integral(horizon, nums):
+    buf = []
+    for n in nums:
+        buf.append(n)
+        if len(buf) > horizon:
+            buf = buf[1:]
+        yield sum(buf)
+
 if __name__ == '__main__':
     ls = list(read())
 
@@ -75,27 +107,42 @@ if __name__ == '__main__':
     _, rtt = zip(*rtt(ls))
     _, rin = zip(*rin(ls))
     _, rout = zip(*rout(ls))
+    _, elast = zip(*elast(ls))
+    _, fr = zip(*setRate(ls))
     sw = list(switches(ls))
 
-    fig1 = plt.figure(1)
+    fig2 = plt.figure(1)
     plt.xlabel('Time (s)')
     plt.ylabel('zt (Mbps)')
     vlines(plt, sw)
+    plt.title(sys.argv[1])
     plt.plot(nxa, zt, label='nimbus')
+
+    zs = [z for z in zt if z != 0]
 
     fig2 = plt.figure(2)
     plt.xlabel('Time (s)')
     plt.ylabel('rtt (s)')
     vlines(plt, sw)
+    plt.title(sys.argv[1])
     plt.plot(nxa, rtt, label='nimbus')
 
     fig3 = plt.figure(3)
     plt.xlabel('Time (s)')
     plt.ylabel('rin (Mbps)')
     vlines(plt, sw)
+    plt.title(sys.argv[1])
     plt.plot(nxa, rin, label='rin')
     plt.plot(nxa, rout, label='rout')
+    #plt.plot(nxa, fr, label='set')
     plt.legend()
+
+    fig4 = plt.figure(4)
+    plt.xlabel('Time (s)')
+    plt.ylabel('elastic detector')
+    vlines(plt, sw)
+    plt.title(sys.argv[1])
+    plt.plot(nxa, elast, label='nimbus')
 
     plt.show()
 

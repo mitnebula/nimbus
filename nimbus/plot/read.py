@@ -4,10 +4,16 @@ import sys
 import re
 
 def parseTime(t):
-    matches = re.findall(r'([0-9]+m)?([0-9]+\.[0-9]+)s|([0-9]+\.?[0-9]+)ms', t)
-    assert len(matches) == 1, (t, matches)
+    matches = re.findall(r'([0-9]+m)?([0-9]+?\.?[0-9]+)s|([0-9]+\.?[0-9]+)ms', t)
+    if len(matches) == 0:
+        #microseconds/
+        matches = re.findall(r'([0-9]+?\.?[0-9]+).*s', t)
+        if len(matches) == 0:
+            if t == '0s':
+                return 0
+        usecs_m = matches[0]
+        return float(usecs_m) * 1e-6
     mnts_m, secs_m, mses_m = matches[0]
-
 
     if mses_m != '':
         return float(mses_m) * 1e-3
@@ -31,8 +37,9 @@ def parseTptOutput(sp):
     return ret
 
 def parseSwitchOutput(sp):
-    if len(sp) == 6:
-        sp = sp[:-1]
+    if len(sp) > 5:
+        sp = sp[:5]
+    print sp
     t, _, fr, _, to = sp
     return {
         'time': parseTime(t),
