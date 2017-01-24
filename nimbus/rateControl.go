@@ -97,7 +97,7 @@ func switchToDelay(rtt time.Duration) {
 		return
 	}
 
-	fmt.Printf("%v : %s -> DELAY\n", time.Since(startTime), currMode)
+	fmt.Printf("[%v] : %s -> DELAY\n", NowPretty(), currMode)
 
 	flowMode = DELAY
 	currMode = "DELAY"
@@ -110,7 +110,7 @@ func switchToXtcp(rtt time.Duration) {
 		return
 	}
 
-	fmt.Printf("%v : %s -> XTCP\n", time.Since(startTime), currMode)
+	fmt.Printf("[%v] : %s -> XTCP\n", NowPretty(), currMode)
 
 	flowMode = XTCP
 	currMode = "XTCP"

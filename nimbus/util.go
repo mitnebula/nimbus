@@ -10,6 +10,14 @@ func Now() int64 {
 	return time.Now().UnixNano()
 }
 
+func NowPretty() string {
+	return time.Now().Format("15:04:05.000000")
+}
+
+func BpsToMbps(bps float64) float64 {
+	return (bps / 1000000)
+}
+
 func ThroughputFromTimes(
 	times *PacketLog,
 	now time.Time,
