@@ -111,7 +111,7 @@ if __name__ == '__main__':
     _, fr = zip(*setRate(ls))
     sw = list(switches(ls))
 
-    fig2 = plt.figure(1)
+    fig1 = plt.figure(1)
     plt.xlabel('Time (s)')
     plt.ylabel('zt (Mbps)')
     vlines(plt, sw)
