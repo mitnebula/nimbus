@@ -10,8 +10,8 @@ plt.cla()
 plt.clf()
 
 
-def read():
-    with open(sys.argv[1], 'r') as f:
+def read(fn):
+    with open(fn, 'r') as f:
         for line in f:
             sp = line.split()
             if '->' in sp:
@@ -37,8 +37,6 @@ def read():
                     'fr': setRate,
                     'yt': yt,
                 }
-            else:
-                print sp
 
 def zt(ls):
     for l in ls:
@@ -101,7 +99,7 @@ def integral(horizon, nums):
         yield sum(buf)
 
 if __name__ == '__main__':
-    ls = list(read())
+    ls = list(read(sys.argv[1]))
 
     nxa, zt = zip(*zt(ls))
     _, rtt = zip(*rtt(ls))
