@@ -59,7 +59,7 @@ func (xt *xtcpDataContainer) getNextSeq() (seq uint32, vfid uint16) {
 	xt.seq_nos[vfid]++
 
 	nextFlow := (vfid + 1) % xt.numVirtualFlows
-	if xt.seq_nos[vfid] > xt.seq_nos[nextFlow]+180 {
+	if xt.seq_nos[vfid] > xt.seq_nos[nextFlow]+uint32(xt.virtual_cwnds[vfid]) {
 		xt.currVirtFlow = nextFlow
 	}
 
@@ -119,6 +119,6 @@ func (xt *xtcpDataContainer) increaseXtcpWind(fid uint16) {
 	denom := xt.virtual_cwnds[fid] * float64(xt.numVirtualFlows)
 
 	for f, _ := range xt.virtual_cwnds {
-		xt.virtual_cwnds[f] += 1.5 / denom
+		xt.virtual_cwnds[f] += 1 / denom
 	}
 }
