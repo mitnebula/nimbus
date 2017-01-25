@@ -1,11 +1,17 @@
 #!/usr/bin/python
 
 import sys
+import matplotlib
 from matplotlib import pyplot as plt
 import numpy as np
 
 from elasticity_all import read, vlines, elast, switches
 from read import parseTime
+
+matplotlib.rc('font', family='sans-serif')
+matplotlib.rc('font', serif='Futura Medium')
+matplotlib.rc('text', usetex='false')
+matplotlib.rcParams.update({'font.size': 14})
 
 plt.cla()
 plt.clf()
@@ -15,11 +21,12 @@ def readElast(fn):
         for line in f:
             sp = line.split()
             if sp[0] == 'ELASTICITY:':
-                if len(sp) != 5:
+                if len(sp) != 6:
                     continue
-                _, t, sec5, sec2, short = sp
+                _, t, tot, sec5, sec2, short = sp
                 yield {
                     't': parseTime(t),
+                    'tot': float(tot),
                     '5sec': float(sec5),
                     '2sec': float(sec2),
                     'short': float(short),
@@ -49,7 +56,7 @@ def plotWorkload(fn, ax, title):
 
     ax.set_xlabel('Time (s)')
     ax.set_ylabel('Elasticity')
-    #vlines(plt, sw)
+    vlines(plt, sw)
     #ax.set_title(title)
     ax.set_xlim(0, 60)
     ax.set_ylim(-0.5, 1.5)
