@@ -6,6 +6,13 @@ import numpy as np
 
 from elasticity import readElast, sec5
 
+import matplotlib
+matplotlib.rc('font', family='sans-serif')
+matplotlib.rc('font', serif='Futura Medium')
+matplotlib.rc('text', usetex='false')
+matplotlib.rcParams.update({'font.size': 14})
+
+
 plt.cla()
 plt.clf()
 
