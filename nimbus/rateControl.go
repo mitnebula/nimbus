@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	alpha = 1
+	alpha = 0.8
 
 	// switching parameters
 	xtcpTimeout = 20 // rtts
@@ -98,6 +98,7 @@ func switchToDelay(rtt time.Duration) {
 	}
 
 	fmt.Printf("[%v] : %s -> DELAY\n", NowPretty(), currMode)
+	//fmt.Printf("%v : %s -> DELAY\n", time.Since(startTime), currMode)
 
 	flowMode = DELAY
 	currMode = "DELAY"
@@ -111,6 +112,7 @@ func switchToXtcp(rtt time.Duration) {
 	}
 
 	fmt.Printf("[%v] : %s -> XTCP\n", NowPretty(), currMode)
+	//fmt.Printf("%v : %s -> XTCP\n", time.Since(startTime), currMode)
 
 	flowMode = XTCP
 	currMode = "XTCP"
@@ -126,8 +128,9 @@ func updateRateDelay(
 	zt float64,
 	rtt time.Duration,
 ) float64 {
-	beta = (rin / rtt.Seconds()) * 0.33
-	newRate := rin + alpha*(est_bandwidth-zt-rin) - (beta/2)*(rtt.Seconds()-(1.25*min_rtt.Seconds()))
+	beta = 0.5
+	delta := rtt.Seconds()
+	newRate := rin + alpha*(est_bandwidth-zt-rin) - ((est_bandwidth*beta)/delta)*(rtt.Seconds()-(1.25*min_rtt.Seconds()))
 
 	minRate := float64(ONE_PACKET) / min_rtt.Seconds() // send at least 1 packet per rtt
 	if newRate < minRate || math.IsNaN(newRate) {
@@ -379,6 +382,7 @@ func doUpdate() {
 	shouldSwitch(rtt)
 
 	flowRateLock.Lock()
+	defer flowRateLock.Unlock()
 
 	switch flowMode {
 	case DELAY:
@@ -392,6 +396,7 @@ func doUpdate() {
 
 	case XTCP:
 		flowRate = xtcpData.updateRateXtcp(rtt)
+		panic(false)
 	}
 
 	flowRate = changePulses(flowRate, rtt)
@@ -399,7 +404,4 @@ func doUpdate() {
 	if flowRate < 0 {
 		panic("negative flow rate")
 	}
-
-	flowRateLock.Unlock()
-
 }
