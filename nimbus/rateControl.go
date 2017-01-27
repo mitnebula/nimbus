@@ -301,7 +301,7 @@ func changePulses(fr float64, rtt time.Duration) float64 {
 			pulseMode = DOWN_PULSE
 		}
 		pulseSwitchTime = time.Now()
-		return fr * 1.5
+		return fr * (1 + *pulseSize)
 	case DOWN_PULSE:
 		if numPulses <= 1 {
 			pulseMode = PULSE_WAIT
@@ -310,7 +310,7 @@ func changePulses(fr float64, rtt time.Duration) float64 {
 			pulseMode = UP_PULSE
 		}
 		pulseSwitchTime = time.Now()
-		return fr * 0.5
+		return fr * (1 - *pulseSize)
 	default:
 		err := fmt.Errorf("unknown pulse mode: %v", pulseMode)
 		panic(err)
@@ -396,7 +396,6 @@ func doUpdate() {
 
 	case XTCP:
 		flowRate = xtcpData.updateRateXtcp(rtt)
-		panic(false)
 	}
 
 	flowRate = changePulses(flowRate, rtt)

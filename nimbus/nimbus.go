@@ -16,6 +16,7 @@ var cpuprofile = flag.String("cpuprofile", "", "write cpu profile `file`")
 var runtime = flag.Duration("t", time.Duration(180)*time.Second, "runtime in seconds")
 var numVirtualFlows = flag.Int("numFlows", 1, "number of virtual flows")
 var estBandwidth = flag.Float64("estBandwidth", 24e6, "estimated bandwidth")
+var pulseSize = flag.Float64("pulseSize", 0.5, "size of pulses to send as fraction of rate")
 
 // TODO make a slow start-like startup
 var initRate = flag.Float64("initRate", 10e6, "initial sending rate")
