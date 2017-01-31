@@ -4,29 +4,37 @@ import (
 	"fmt"
 	"net"
 	"time"
+
+	"github.mit.edu/hari/packetops"
 )
 
-var rcvd *receivedBytes
-var ackBuffer *rawPacket
+var rcvd *packetops.RawPacket
+var ackBuffer *packetops.RawPacket
 
 func init() {
-	rcvd = &receivedBytes{
-		b: make([]byte, 1500),
+	rcvd = &packetops.RawPacket{
+		Buf: make([]byte, 1500),
 	}
 
-	ackBuffer = &rawPacket{
-		buf: make([]byte, 22),
+	ackBuffer = &packetops.RawPacket{
+		Buf: make([]byte, 1500),
 	}
 }
 
 func Client(ip string, port string) error {
-	conn, _, err := setupClientSock(ip, port)
+	conn, _, err := packetops.SetupClientSock(ip, port)
 	if err != nil {
 		return err
 	}
 
 	go receive(conn)
-	err = sendSyn(conn)
+	syn := Packet{
+		SeqNo:   42,
+		VirtFid: 42,
+		Echo:    Now(),
+		Payload: "SYN",
+	}
+	err = packetops.SendSyn(conn, &syn)
 	if err != nil {
 		return err
 	}
@@ -35,12 +43,13 @@ func Client(ip string, port string) error {
 }
 
 func Receiver(port string) error {
-	conn, listenAddr, err := setupListeningSock(port)
+	conn, listenAddr, err := packetops.SetupListeningSock(port)
 	if err != nil {
 		return err
 	}
 
-	syn, conn, err := listenForSyn(conn, listenAddr)
+	syn := Packet{}
+	conn, err = packetops.ListenForSyn(conn, listenAddr, &syn)
 	if err != nil {
 		return err
 	}
@@ -49,7 +58,7 @@ func Receiver(port string) error {
 	go func() {
 		// send first ack
 		syn.RecvTime = Now()
-		err := r.SendAck(conn, syn)
+		err := packetops.SendAck(conn, &syn)
 		if err != nil {
 			fmt.Println("synack", err)
 		}
@@ -61,7 +70,7 @@ func Receiver(port string) error {
 func receive(conn *net.UDPConn) error {
 	lastTime := time.Now()
 	for {
-		err := doReceive(conn, r, &lastTime)
+		err := doReceive(conn, &lastTime)
 		if err != nil {
 			fmt.Println(err)
 			continue
@@ -73,23 +82,22 @@ func receive(conn *net.UDPConn) error {
 
 func doReceive(
 	conn *net.UDPConn,
-	r packetOps,
 	lastTime *time.Time,
 ) error {
-	r.Listen(conn, rcvd)
+	err := packetops.Listen(conn, rcvd)
 	*lastTime = time.Now()
-	if rcvd.err != nil {
-		fmt.Println(rcvd.err)
-		return rcvd.err
+	if err != nil {
+		fmt.Println(err)
+		return err
 	}
 
 	// copy header (first 22 bytes) to ack
-	ack := rcvd.b[:22]
-	copy(ackBuffer.buf, ack)
+	ack := rcvd.Buf[:22]
+	copy(ackBuffer.Buf, ack)
 
 	makeAck(ackBuffer, lastTime.UnixNano())
 
-	err := r.SendRaw(conn, ackBuffer)
+	err = packetops.SendRaw(conn, ackBuffer)
 	if err != nil {
 		return err
 	}
@@ -97,8 +105,8 @@ func doReceive(
 	return nil
 }
 
-func makeAck(ack *rawPacket, recvTime int64) {
+func makeAck(ack *packetops.RawPacket, recvTime int64) {
 	// write recvTime to bytes 14 - 21
-	buf := ack.buf[14:]
+	buf := ack.Buf[14:]
 	encodeInt64(recvTime, buf)
 }

@@ -16,8 +16,6 @@ var runtime = flag.Duration("t", time.Duration(180)*time.Second, "runtime in sec
 var rate = flag.Float64("initRate", 10e6, "initial sending rate")
 var msgSize = flag.Int("msgSizeBytes", 5840, "size of each message in bytes")
 
-var r pktops
-
 // overall statistics
 var done chan interface{}
 var sendCount int64

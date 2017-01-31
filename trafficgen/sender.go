@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/akshayknarayan/history"
+	"github.mit.edu/hari/packetops"
 )
 
 const (
@@ -37,7 +38,7 @@ func init() {
 }
 
 func Server(port string) error {
-	conn, addr, err := setupListeningSock(port)
+	conn, addr, err := packetops.SetupListeningSock(port)
 	if err != nil {
 		return err
 	}
@@ -45,7 +46,8 @@ func Server(port string) error {
 	rtt_history := make(chan int64)
 	go rttUpdater(rtt_history)
 
-	_, conn, err = listenForSyn(conn, addr)
+	syn := Packet{}
+	conn, err = packetops.ListenForSyn(conn, addr, &syn)
 	if err != nil {
 		return err
 	}
@@ -60,7 +62,7 @@ func Server(port string) error {
 }
 
 func Sender(ip string, port string) error {
-	conn, toAddr, err := setupClientSock(ip, port)
+	conn, toAddr, err := packetops.SetupClientSock(ip, port)
 	if err != nil {
 		return err
 	}
@@ -68,7 +70,12 @@ func Sender(ip string, port string) error {
 	rtt_history := make(chan int64)
 	go rttUpdater(rtt_history)
 
-	err = synAckExchange(conn, toAddr, rtt_history)
+	syn := Packet{
+		Echo:    Now(),
+		Payload: "SYN",
+	}
+
+	err = packetops.SynAckExchange(conn, toAddr, &syn)
 	if err != nil {
 		return err
 	}
@@ -101,7 +108,7 @@ func output() {
 			time.Since(startTime),
 			inTpt,
 			outTpt,
-			time.Duration(rtt.(durationLogVal)),
+			rtt.(time.Duration),
 			min_rtt,
 			inVariance,
 		)
@@ -123,7 +130,7 @@ func rttUpdater(rtt_history chan int64) {
 			ackTimes.UpdateDuration(rtt * 100)
 		}
 
-		rtts.Add(durationLogVal(rtt))
+		rtts.Add(rtt)
 	}
 }
 
@@ -154,9 +161,9 @@ func flowPacer(pacing chan interface{}) {
 	}
 }
 
-func stampTime(pkt *rawPacket, t int64) {
+func stampTime(pkt *packetops.RawPacket, t int64) {
 	// write Echo to bytes 6 - 13
-	buf := pkt.buf[0:8]
+	buf := pkt.Buf[0:8]
 	encodeInt64(t, buf)
 }
 
@@ -175,7 +182,7 @@ func send(
 
 func doSend(conn *net.UDPConn) error {
 	pkt := Packet{Echo: Now()}
-	r.SendPacket(conn, pkt, 1500)
+	packetops.SendPacket(conn, &pkt, 1500)
 	sendTimes.Add(time.Now(), pkt)
 	return nil
 }
@@ -185,20 +192,26 @@ func handleAck(
 	expSrc *net.UDPAddr,
 	rtt_history chan int64,
 ) {
-	pktBuf := &receivedBytes{b: make([]byte, 50)}
+	pktBuf := &packetops.RawPacket{Buf: make([]byte, 50)}
+	var ack Packet
 	for {
-		r.Listen(conn, pktBuf)
-		pkt, _, err := Decode(pktBuf)
+		err := packetops.Listen(conn, pktBuf)
 		if err != nil {
 			fmt.Println(err)
 			continue
 		}
 
-		recvTime := time.Unix(0, pkt.RecvTime)
-		ackTimes.Add(recvTime, pkt)
+		err = ack.Decode(pktBuf)
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
+
+		recvTime := time.Unix(0, ack.RecvTime)
+		ackTimes.Add(recvTime, ack)
 		recvCount++
 
-		delay := Now() - pkt.Echo
+		delay := Now() - ack.Echo
 		rtt_history <- delay
 	}
 }

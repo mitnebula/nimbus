@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/akshayknarayan/history"
+	"github.mit.edu/hari/packetops"
 )
 
 const (
@@ -48,7 +49,7 @@ func init() {
 }
 
 func Server(port string) error {
-	conn, addr, err := setupListeningSock(port)
+	conn, addr, err := packetops.SetupListeningSock(port)
 	if err != nil {
 		return err
 	}
@@ -56,7 +57,8 @@ func Server(port string) error {
 	rtt_history := make(chan int64)
 	go rttUpdater(rtt_history)
 
-	_, conn, err = listenForSyn(conn, addr)
+	syn := Packet{}
+	conn, err = packetops.ListenForSyn(conn, addr, &syn)
 	if err != nil {
 		return err
 	}
@@ -74,7 +76,7 @@ func Server(port string) error {
 }
 
 func Sender(ip string, port string) error {
-	conn, toAddr, err := setupClientSock(ip, port)
+	conn, toAddr, err := packetops.SetupClientSock(ip, port)
 	if err != nil {
 		return err
 	}
@@ -82,10 +84,20 @@ func Sender(ip string, port string) error {
 	rtt_history := make(chan int64)
 	go rttUpdater(rtt_history)
 
-	err = synAckExchange(conn, toAddr, rtt_history)
+	seq, vfid := xtcpData.getNextSeq()
+	syn := Packet{
+		SeqNo:   seq,
+		VirtFid: vfid,
+		Echo:    Now(),
+		Payload: "SYN",
+	}
+
+	err = packetops.SynAckExchange(conn, toAddr, &syn)
 	if err != nil {
 		return err
 	}
+
+	xtcpData.checkXtcpSeq(syn.VirtFid, syn.SeqNo)
 
 	fmt.Println("connected")
 
@@ -166,9 +178,9 @@ func flowPacer(pacing chan interface{}) {
 	}
 }
 
-func stampTime(pkt *rawPacket, t int64) {
+func stampTime(pkt *packetops.RawPacket, t int64) {
 	// write Echo to bytes 6 - 13
-	buf := pkt.buf[6:13]
+	buf := pkt.Buf[6:13]
 	encodeInt64(t, buf)
 }
 
@@ -192,13 +204,13 @@ func doSend(conn *net.UDPConn) error {
 		SeqNo:   seq,
 		VirtFid: vfid,
 	}
-	rp, err := pkt.makeRaw(1500)
+	rp, err := pkt.Encode(1500)
 	if err != nil {
 		return err
 	}
 
 	stampTime(rp, Now())
-	r.SendRaw(conn, rp)
+	packetops.SendRaw(conn, rp)
 	sendTimes.Add(time.Now(), pkt)
 	return nil
 }
@@ -208,27 +220,33 @@ func handleAck(
 	expSrc *net.UDPAddr,
 	rtt_history chan int64,
 ) {
-	pktBuf := &receivedBytes{b: make([]byte, 50)}
+	pktBuf := &packetops.RawPacket{Buf: make([]byte, 50)}
+	var ack Packet
 	for {
-		r.Listen(conn, pktBuf)
-		pkt, _, err := Decode(pktBuf)
+		err := packetops.Listen(conn, pktBuf)
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
+
+		err = ack.Decode(pktBuf)
 		if err != nil {
 			fmt.Println(err)
 			continue
 		}
 
 		// check for XTCP packet drop
-		if ok := xtcpData.checkXtcpSeq(pkt.VirtFid, pkt.SeqNo); !ok {
-			xtcpData.dropDetected(pkt.VirtFid)
+		if ok := xtcpData.checkXtcpSeq(ack.VirtFid, ack.SeqNo); !ok {
+			xtcpData.dropDetected(ack.VirtFid)
 		} else {
-			xtcpData.increaseXtcpWind(pkt.VirtFid)
+			xtcpData.increaseXtcpWind(ack.VirtFid)
 		}
 
-		recvTime := time.Unix(0, pkt.RecvTime)
-		ackTimes.Add(recvTime, pkt)
+		recvTime := time.Unix(0, ack.RecvTime)
+		ackTimes.Add(recvTime, ack)
 		recvCount++
 
-		delay := Now() - pkt.Echo
+		delay := Now() - ack.Echo
 		rtt_history <- delay
 	}
 }

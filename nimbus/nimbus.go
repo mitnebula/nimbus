@@ -21,8 +21,6 @@ var pulseSize = flag.Float64("pulseSize", 0.5, "size of pulses to send as fracti
 // TODO make a slow start-like startup
 var initRate = flag.Float64("initRate", 10e6, "initial sending rate")
 
-var r pktops
-
 // overall statistics
 var done chan interface{}
 var sendCount int64

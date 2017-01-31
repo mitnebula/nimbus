@@ -1,11 +1,11 @@
-package main
+package packetops
 
 import (
 	"fmt"
 	"net"
 )
 
-func setupClientSock(ip string, port string) (*net.UDPConn, *net.UDPAddr, error) {
+func SetupClientSock(ip string, port string) (*net.UDPConn, *net.UDPAddr, error) {
 	addr, err := net.ResolveUDPAddr("udp4", fmt.Sprintf("%s:%s", ip, port))
 	if err != nil {
 		return nil, nil, err
@@ -18,21 +18,7 @@ func setupClientSock(ip string, port string) (*net.UDPConn, *net.UDPAddr, error)
 	return conn, addr, nil
 }
 
-func sendSyn(conn *net.UDPConn) error {
-	syn := Packet{
-		Echo:    Now(),
-		Payload: "SYN",
-	}
-
-	err := r.SendAck(conn, syn)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func setupListeningSock(port string) (*net.UDPConn, *net.UDPAddr, error) {
+func SetupListeningSock(port string) (*net.UDPConn, *net.UDPAddr, error) {
 	// set up syn listening socket
 	addr, err := net.ResolveUDPAddr("udp4", fmt.Sprintf(":%s", port))
 	if err != nil {
@@ -47,15 +33,24 @@ func setupListeningSock(port string) (*net.UDPConn, *net.UDPAddr, error) {
 	return conn, addr, nil
 }
 
+func SendSyn(conn *net.UDPConn, syn Packet) error {
+	err := SendAck(conn, syn)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // wait for the SYN
-// send the synack
-func listenForSyn(
+func ListenForSyn(
 	conn *net.UDPConn,
 	listenAddr *net.UDPAddr,
-) (Packet, *net.UDPConn, error) {
-	syn, fromAddr, err := r.RecvPacket(conn)
+	p Packet,
+) (*net.UDPConn, error) {
+	fromAddr, err := RecvPacket(conn, p)
 	if err != nil {
-		return Packet{}, nil, err
+		return nil, err
 	}
 
 	// close and reopen
@@ -64,34 +59,28 @@ func listenForSyn(
 	// dial connection to send ACKs
 	newConn, err := net.DialUDP("udp4", listenAddr, fromAddr)
 	if err != nil {
-		return Packet{}, nil, err
+		return nil, err
 	}
 
 	fmt.Println("connected to ", fromAddr)
-	return syn, newConn, nil
+	return newConn, nil
 }
 
-func synAckExchange(conn *net.UDPConn, expSrc *net.UDPAddr, rtt_history chan int64) error {
-	syn := Packet{
-		Echo:    Now(),
-		Payload: "SYN",
-	}
-
-	err := r.SendAck(conn, syn)
+// send the given syn
+// receive the synack into the same packet buffer
+func SynAckExchange(conn *net.UDPConn, expSrc *net.UDPAddr, syn Packet) error {
+	err := SendSyn(conn, syn)
 	if err != nil {
 		return err
 	}
 
-	ack, srcAddr, err := r.RecvPacket(conn)
+	srcAddr, err := RecvPacket(conn, syn)
 	if err != nil {
 		return err
 	}
 	if srcAddr.String() != expSrc.String() {
 		return fmt.Errorf("got packet from unexpected src: %s; expected %s", srcAddr, expSrc)
 	}
-
-	delay := Now() - ack.Echo
-	rtt_history <- delay
 
 	return nil
 }
