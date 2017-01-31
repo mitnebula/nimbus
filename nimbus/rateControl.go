@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math"
 	"time"
+
+	"github.com/akshayknarayan/history"
 )
 
 const (
@@ -26,9 +28,9 @@ var est_bandwidth float64
 var beta float64
 
 // regularly spaced measurements
-var zt_history *TimedLog
-var xt_history *TimedLog
-var esty_history *TimedLog
+var zt_history *history.History
+var xt_history *history.History
+var esty_history *history.History
 
 var modeSwitchTime time.Time
 
@@ -47,9 +49,9 @@ var currMode string
 func init() {
 	est_bandwidth = 10e6
 
-	zt_history = InitTimedLog(min_rtt)
-	xt_history = InitTimedLog(min_rtt)
-	esty_history = InitTimedLog(time.Duration(15) * time.Second)
+	zt_history = history.MakeHistory(min_rtt)
+	xt_history = history.MakeHistory(min_rtt)
+	esty_history = history.MakeHistory(time.Duration(15) * time.Second)
 
 	// (est_bandwidth / min_rtt) * C where 0 < C < 1, use C = 0.4
 	beta = (flowRate / 0.001) * 0.33
@@ -64,9 +66,7 @@ func init() {
 }
 
 func deltaZt(zt float64, delay time.Duration) (float64, error) {
-	zt_history.mux.Lock()
 	oldZtVal, _, err := zt_history.Before(time.Now().Add(-1 * delay))
-	zt_history.mux.Unlock()
 	if err != nil {
 		return 0, err
 	}
@@ -82,9 +82,7 @@ func deltaZt(zt float64, delay time.Duration) (float64, error) {
 }
 
 func deltaXt(from time.Time, rtt time.Duration, delay time.Duration) (float64, error) {
-	xt_history.mux.Lock()
 	oldXt, _, err := xt_history.Before(from.Add(-1 * delay))
-	xt_history.mux.Unlock()
 	if err != nil {
 		return 0, err
 	}
@@ -151,7 +149,7 @@ func measure(interval time.Duration) (
 	if err != nil {
 		return
 	}
-	rtt = time.Duration(lv.(durationLogVal))
+	rtt = lv.(time.Duration)
 	rout, oldPkt, newPkt, err := ThroughputFromTimes(
 		ackTimes,
 		time.Now(),
@@ -192,9 +190,7 @@ func integrateElasticity(zt float64, rtt time.Duration) float64 {
 	var totEsty float64
 	measurementInterval := time.Duration(10) * time.Millisecond
 
-	xt_history.mux.Lock()
 	oldXtVal, t, err := xt_history.Before(time.Now().Add(-1 * rtt))
-	xt_history.mux.Unlock()
 	if err != nil {
 		err = fmt.Errorf("oldXt: %v", err)
 		return 0
@@ -215,9 +211,7 @@ func integrateElasticity(zt float64, rtt time.Duration) float64 {
 
 	elasticity := (dZt / est_bandwidth) * (dXt / min_rtt.Seconds())
 
-	esty_history.mux.Lock()
 	lv, _, err := esty_history.Before(time.Now())
-	esty_history.mux.Unlock()
 	if err != nil {
 		esty_history.Add(time.Now(), elasticity)
 		return elasticity
@@ -261,14 +255,12 @@ func measurePeriod() {
 		xt_history.Add(time.Now(), yt)
 
 		elast := integrateElasticity(zt, rtt)
-		esty_history.mux.Lock()
 		oldElast, _, err := esty_history.Before(time.Now().Add(-1 * (time.Duration(5) * time.Second)))
 		if err == nil {
 			elast -= oldElast.(float64)
 		}
 
 		fmt.Printf("%v : %v %v %v %v %v %v %v\n", time.Since(startTime), zt, rtt, rin, rout, elast, flowRate, yt)
-		esty_history.mux.Unlock()
 		<-time.After(tick)
 	}
 }
@@ -346,8 +338,6 @@ func shouldSwitch(rtt time.Duration) {
 		return
 	}
 
-	esty_history.mux.Lock()
-	defer esty_history.mux.Unlock()
 	totElastVal, _, err := esty_history.Before(time.Now())
 	if err != nil {
 		fmt.Println(err)

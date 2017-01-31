@@ -93,7 +93,7 @@ func (xt *xtcpDataContainer) dropDetected(vfid uint16) {
 				return
 			}
 
-			xt.drop_time[vfid] = Now() + time.Duration(lv.(durationLogVal)).Nanoseconds()
+			xt.drop_time[vfid] = Now() + lv.(time.Duration).Nanoseconds()
 		}
 	}
 }

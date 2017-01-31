@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math"
 	"time"
+
+	"github.com/akshayknarayan/history"
 )
 
 func Now() int64 {
@@ -19,13 +21,10 @@ func BpsToMbps(bps float64) float64 {
 }
 
 func ThroughputFromTimes(
-	times *PacketLog,
+	times *history.UniqueHistory,
 	now time.Time,
 	delay time.Duration,
 ) (float64, Packet, Packet, error) {
-	times.mux.Lock()
-	defer times.mux.Unlock()
-
 	if times.Len() < 2 {
 		return 0, Packet{}, Packet{}, fmt.Errorf("not enough values")
 	}
@@ -55,11 +54,11 @@ func ThroughputFromTimes(
 		return 0, Packet{}, Packet{}, fmt.Errorf("undefined throughput: %v %v", tot, dur)
 	}
 
-	return tpt, oldestPkt, newestPkt, nil
+	return tpt, oldestPkt.(Packet), newestPkt.(Packet), nil
 }
 
 func PacketTimes(
-	times *PacketLog,
+	times *history.UniqueHistory,
 	oldPkt Packet,
 	newPkt Packet,
 ) (time.Time, time.Time, error) {
@@ -69,31 +68,18 @@ func PacketTimes(
 	oldPkt.Echo = 0
 	newPkt.Echo = 0
 
-	times.mux.Lock()
-	defer times.mux.Unlock()
-
-	oldPktTime, ok := times.m[oldPkt]
-	if !ok {
+	oldPktTime, err := times.TimeOf(oldPkt)
+	if err != nil {
 		t := time.Now()
-		return t, t, fmt.Errorf("can't find packet time: %v", oldPkt)
+		return t, t, fmt.Errorf("can't find packet time: %v: %v", oldPkt, err)
 	}
-	newPktTime, ok := times.m[newPkt]
-	if !ok {
+	newPktTime, err := times.TimeOf(newPkt)
+	if err != nil {
 		t := time.Now()
-		return t, t, fmt.Errorf("can't find packet time: %v", newPkt)
+		return t, t, fmt.Errorf("can't find packet time: %v: %v", oldPkt, err)
 	}
 
 	return newPktTime, oldPktTime, nil
-}
-
-func MinRtt(rtts *Log) time.Duration {
-	var min_rtt time.Duration
-	lv, err := rtts.Min()
-	if err != nil {
-		min_rtt, _ = time.ParseDuration("0s")
-	}
-	min_rtt = time.Duration(lv.(durationLogVal))
-	return min_rtt
 }
 
 func PrintPacket(pkt Packet) string {

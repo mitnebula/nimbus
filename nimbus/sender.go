@@ -5,6 +5,8 @@ import (
 	"net"
 	"sync"
 	"time"
+
+	"github.com/akshayknarayan/history"
 )
 
 const (
@@ -17,9 +19,9 @@ var flowRateLock sync.Mutex
 var min_rtt time.Duration
 
 // Log is thread-safe
-var rtts *Log
-var sendTimes *PacketLog
-var ackTimes *PacketLog
+var rtts *history.QueueHistory
+var sendTimes *history.UniqueHistory
+var ackTimes *history.UniqueHistory
 
 type Mode int
 
@@ -37,9 +39,9 @@ func init() {
 	flowRate = 0
 	min_rtt = time.Duration(999) * time.Hour
 
-	rtts = InitLog(100)
-	sendTimes = InitPacketLog(min_rtt)
-	ackTimes = InitPacketLog(min_rtt)
+	rtts = history.MakeQueueHistory(100)
+	sendTimes = history.MakeUniqueHistory(min_rtt)
+	ackTimes = history.MakeUniqueHistory(min_rtt)
 
 	sendCount = 0
 	recvCount = 0
@@ -114,7 +116,7 @@ func output() {
 			NowPretty(),
 			BpsToMbps(inTpt),
 			BpsToMbps(outTpt),
-			time.Duration(rtt.(durationLogVal)),
+			rtt.(time.Duration),
 			min_rtt,
 			currMode)
 
@@ -139,7 +141,7 @@ func rttUpdater(rtt_history chan int64) {
 			maxQd = 2 * min_rtt
 		}
 
-		rtts.Add(durationLogVal(rtt))
+		rtts.Add(rtt)
 	}
 }
 

@@ -18,7 +18,7 @@ func BenchmarkRateUpdate(b *testing.B) {
 	for i := 0; i < 1000; i++ {
 		sendTimes.Add(now, pkt)
 		ackTimes.Add(now.Add(rtt), pkt)
-		rtts.Add(durationLogVal(rtt))
+		rtts.Add(rtt)
 
 		pkt.SeqNo++
 		now = now.Add(rtt)
