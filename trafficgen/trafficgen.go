@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/signal"
 	"time"
+
+	"github.mit.edu/hari/receiver"
 )
 
 var ip = flag.String("ip", "127.0.0.1", "IP to connect to")
@@ -42,16 +44,20 @@ func main() {
 		err = Server(*port)
 
 		endTime = startTime.Add(*runtime)
-	} else if *mode == "client" {
-		err = Client(*ip, *port)
-
-		endTime = startTime.Add(*runtime)
 	} else if *mode == "sender" {
 		err = Sender(*ip, *port)
 
 		endTime = startTime.Add(*runtime)
-	} else if *mode == "receiver" {
-		err = Receiver(*port)
+	} else if *mode == "client" || *mode == "receiver" {
+		syn, cnt, off := setupReceiver()
+
+		endTime = startTime.Add(*runtime)
+
+		if *mode == "client" {
+			err = receiver.Client(*ip, *port, syn, cnt, off)
+		} else {
+			err = receiver.Receiver(*port, syn, cnt, off)
+		}
 	}
 	if err != nil {
 		fmt.Println(err)

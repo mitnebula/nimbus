@@ -78,7 +78,7 @@ func Server(port string) error {
 func Sender(ip string, port string) error {
 	conn, toAddr, err := packetops.SetupClientSock(ip, port)
 	if err != nil {
-		return err
+		return fmt.Errorf("sock setup err: %v", err)
 	}
 
 	rtt_history := make(chan int64)
@@ -94,7 +94,7 @@ func Sender(ip string, port string) error {
 
 	err = packetops.SynAckExchange(conn, toAddr, &syn)
 	if err != nil {
-		return err
+		return fmt.Errorf("synack exch err: %v", err)
 	}
 
 	xtcpData.checkXtcpSeq(syn.VirtFid, syn.SeqNo)

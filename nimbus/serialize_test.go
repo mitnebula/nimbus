@@ -42,29 +42,3 @@ func TestDecode(t *testing.T) {
 		t.Error("mismatch", pkt, expected)
 	}
 }
-
-func TestEncodeRecvTime(t *testing.T) {
-	hdr := bytes.Repeat([]byte{0}, 22)
-	ack := rawPacket{buf: hdr}
-	makeAck(&ack, Now())
-	n := Now()
-
-	dec, err := decode(ack.buf)
-	if err != nil {
-		t.Error(err)
-	}
-
-	diff := n - dec.RecvTime
-	if diff < 0 || diff > 100000 {
-		t.Error("encoded incorrectly", dec.RecvTime, n, diff, dec, ack.buf)
-	}
-}
-
-// benchmark how much time it takes to modify the packet
-func BenchmarkRecvTime(b *testing.B) {
-	hdr := bytes.Repeat([]byte{0}, 22)
-	ack := rawPacket{buf: hdr}
-	for i := 0; i < b.N; i++ {
-		makeAck(&ack, Now())
-	}
-}
