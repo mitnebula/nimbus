@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.mit.edu/hari/packetops"
+	"github.mit.edu/hari/nimbus-cc/packetops"
 )
 
 type Packet struct {

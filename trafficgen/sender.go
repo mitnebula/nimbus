@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/akshayknarayan/history"
-	"github.mit.edu/hari/packetops"
+	"github.mit.edu/hari/nimbus-cc/packetops"
 )
 
 const (

@@ -5,7 +5,7 @@ import (
 	"net"
 	"time"
 
-	"github.mit.edu/hari/packetops"
+	"github.mit.edu/hari/nimbus-cc/packetops"
 )
 
 var rcvd *packetops.RawPacket

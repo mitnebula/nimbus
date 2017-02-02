@@ -7,7 +7,7 @@ import (
 	"os/signal"
 	"time"
 
-	"github.mit.edu/hari/receiver"
+	"github.mit.edu/hari/nimbus-cc/receiver"
 )
 
 var ip = flag.String("ip", "127.0.0.1", "IP to connect to")
