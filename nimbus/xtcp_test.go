@@ -28,3 +28,22 @@ func TestSetXtcpCwnd(t *testing.T) {
 		}
 	}
 }
+
+func BenchmarkGetNextSeq(b *testing.B) {
+	testXtcpData := &xtcpDataContainer{
+		numVirtualFlows: 100,
+		currVirtFlow:    0,
+		virtual_cwnds:   make(map[uint16]float64),
+		seq_nos:         make(map[uint16]uint32),
+		recv_seq_nos:    make(map[uint16]uint32),
+		drop_time:       make(map[uint16]int64),
+	}
+
+	rtt := time.Duration(1) * time.Second
+	fr := 120e6
+	testXtcpData.setXtcpCwnd(fr, rtt)
+
+	for i := 0; i < b.N; i++ {
+		_, _ = testXtcpData.getNextSeq()
+	}
+}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math/rand"
 	"sync"
 	"time"
 )
@@ -51,7 +52,7 @@ func (xt *xtcpDataContainer) updateRateXtcp(
 	return res
 }
 
-func (xt *xtcpDataContainer) getNextSeq() (seq uint32, vfid uint16) {
+func (xt *xtcpDataContainer) getNextSeqRR() (seq uint32, vfid uint16) {
 	xt.mut.Lock()
 	defer xt.mut.Unlock()
 
@@ -59,8 +60,31 @@ func (xt *xtcpDataContainer) getNextSeq() (seq uint32, vfid uint16) {
 	xt.seq_nos[vfid]++
 
 	nextFlow := (vfid + 1) % xt.numVirtualFlows
-	if xt.seq_nos[vfid] > xt.seq_nos[nextFlow]+uint32(xt.virtual_cwnds[vfid]) {
-		xt.currVirtFlow = nextFlow
+	xt.currVirtFlow = nextFlow
+	return
+}
+
+func (xt *xtcpDataContainer) getNextSeqLottery() (seq uint32, vfid uint16) {
+	xt.mut.Lock()
+	defer xt.mut.Unlock()
+
+	seq, vfid = xt.seq_nos[xt.currVirtFlow], xt.currVirtFlow
+	xt.seq_nos[vfid]++
+
+	sum := 0.0
+	for _, cwnd := range xt.virtual_cwnds {
+		sum += cwnd
+	}
+
+	nextFlow := rand.Int31n(int32(sum))
+
+	sum = 0.0
+	for i, cwnd := range xt.virtual_cwnds {
+		sum += cwnd
+		if int32(sum) > nextFlow {
+			xt.currVirtFlow = i
+			return
+		}
 	}
 
 	return

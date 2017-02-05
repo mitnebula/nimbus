@@ -84,7 +84,7 @@ func Sender(ip string, port string) error {
 	rtt_history := make(chan int64)
 	go rttUpdater(rtt_history)
 
-	seq, vfid := xtcpData.getNextSeq()
+	seq, vfid := xtcpData.getNextSeqRR()
 	syn := Packet{
 		SeqNo:   seq,
 		VirtFid: vfid,
@@ -198,7 +198,7 @@ func send(
 }
 
 func doSend(conn *net.UDPConn) error {
-	seq, vfid := xtcpData.getNextSeq()
+	seq, vfid := xtcpData.getNextSeqLottery()
 
 	pkt := Packet{
 		SeqNo:   seq,
