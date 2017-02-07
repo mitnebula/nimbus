@@ -67,7 +67,6 @@ func Server(port string) error {
 
 	go handleAck(conn, addr, rtt_history)
 	go flowRateUpdater()
-	go measurePeriod()
 	go output()
 
 	startTime = time.Now()
@@ -105,7 +104,6 @@ func Sender(ip string, port string) error {
 
 	go handleAck(conn, toAddr, rtt_history)
 	go flowRateUpdater()
-	go measurePeriod()
 	go output()
 
 	startTime = time.Now()

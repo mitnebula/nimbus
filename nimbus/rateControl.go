@@ -41,7 +41,6 @@ var modeSwitchTime time.Time
 var pulseMode PulseMode
 var pulseSwitchTime time.Time
 var totElasticity float64
-var numPulses int
 
 var maxQd time.Duration
 
@@ -60,12 +59,11 @@ func init() {
 	beta = (flowRate / 0.001) * 0.33
 
 	// TODO tracking
-	maxQd = 2 * min_rtt
+	maxQd = min_rtt
 
 	pulseSwitchTime = time.Now()
 	modeSwitchTime = time.Now()
 	pulseMode = PULSE_WAIT
-	numPulses = 2
 }
 
 func deltaZt(zt float64, delay time.Duration) (float64, error) {
@@ -91,6 +89,15 @@ func deltaXt(from time.Time, rtt time.Duration, delay time.Duration) (float64, e
 	}
 
 	return rtt.Seconds() - oldXt.(time.Duration).Seconds(), nil
+}
+
+func deltaYt(from time.Time, yt float64, delay time.Duration) (float64, error) {
+	oldYt, _, err := xt_history.Before(from.Add(-1 * delay))
+	if err != nil {
+		return 0, err
+	}
+
+	return yt - oldYt.(float64), nil
 }
 
 func switchToDelay(rtt time.Duration) {
@@ -192,6 +199,39 @@ func measure(interval time.Duration) (
 	if zt > est_bandwidth {
 		zt = est_bandwidth
 	}
+
+	qd := float64((rtt - min_rtt).Nanoseconds())
+	ytNs := qd * (rout / float64(est_bandwidth))
+	yt := ytNs / qd
+
+	if zt > 0 {
+		zt_history.Add(time.Now(), zt)
+	}
+	xt_history.Add(time.Now(), yt)
+
+	elast := integrateElasticity(zt, rtt)
+	oldElast, _, err := esty_history.Before(time.Now().Add(-1 * (time.Duration(5) * time.Second)))
+	if err == nil {
+		elast -= oldElast.(float64)
+	}
+
+	oldXtVal, _, err := xt_history.Before(time.Now().Add(-1 * rtt))
+	if err != nil {
+		return
+	}
+	oldXt := oldXtVal.(float64)
+
+	log.WithFields(log.Fields{
+		"elapsed":  time.Since(startTime),
+		"zt":       zt,
+		"rtt":      rtt,
+		"rin":      rin,
+		"rout":     rout,
+		"elast":    elast,
+		"flowRate": flowRate,
+		"yt":       yt,
+		"oldYt":    oldXt,
+	}).Debug()
 	return
 }
 
@@ -199,26 +239,26 @@ func integrateElasticity(zt float64, rtt time.Duration) float64 {
 	var totEsty float64
 	measurementInterval := time.Duration(10) * time.Millisecond
 
-	oldXtVal, t, err := xt_history.Before(time.Now().Add(-1 * rtt))
-	if err != nil {
-		err = fmt.Errorf("oldXt: %v", err)
-		return 0
-	}
-	oldXt := oldXtVal.(time.Duration)
-
 	dZt, err := deltaZt(zt, measurementInterval)
 	if err != nil {
 		err = fmt.Errorf("deltaZt: %v", err)
 		return 0
 	}
 
-	dXt, err := deltaXt(t, oldXt, measurementInterval)
+	oldYtVal, t, err := xt_history.Before(time.Now().Add(-1 * rtt))
 	if err != nil {
-		err = fmt.Errorf("deltaXt: %v", err)
+		err = fmt.Errorf("oldYt: %v", err)
+		return 0
+	}
+	oldYt := oldYtVal.(float64)
+
+	dYt, err := deltaYt(t, oldYt, measurementInterval)
+	if err != nil {
+		err = fmt.Errorf("deltaYt: %v", err)
 		return 0
 	}
 
-	elasticity := (dZt / est_bandwidth) * (dXt / min_rtt.Seconds())
+	elasticity := (dZt / est_bandwidth) * dYt
 
 	lv, _, err := esty_history.Before(time.Now())
 	if err != nil {
@@ -233,68 +273,13 @@ func integrateElasticity(zt float64, rtt time.Duration) float64 {
 	//totElasticity += elasticity
 }
 
-func flowRateUpdater() {
-	for {
-		untilNextUpdate = time.Duration(0)
-		doUpdate()
-		if untilNextUpdate == time.Duration(0) {
-			untilNextUpdate = time.Duration(10) * time.Millisecond
-		}
-
-		if time.Now().After(endTime) {
-			doExit()
-		}
-		<-time.After(untilNextUpdate)
-	}
-}
-
-func measurePeriod() {
-	tick := time.Duration(10) * time.Millisecond
-	for {
-		rin, rout, zt, rtt, err := measure(min_rtt)
-		if err != nil {
-			continue
-		}
-
-		yt := time.Duration(float64((rtt-min_rtt).Nanoseconds())*(rout/float64(est_bandwidth))) * time.Nanosecond
-
-		if zt > 0 {
-			zt_history.Add(time.Now(), zt)
-		}
-		xt_history.Add(time.Now(), yt)
-
-		elast := integrateElasticity(zt, rtt)
-		oldElast, _, err := esty_history.Before(time.Now().Add(-1 * (time.Duration(5) * time.Second)))
-		if err == nil {
-			elast -= oldElast.(float64)
-		}
-
-		log.WithFields(log.Fields{
-			"elapsed":  time.Since(startTime),
-			"zt":       zt,
-			"rtt":      rtt,
-			"rin":      rin,
-			"rout":     rout,
-			"elast":    elast,
-			"flowRate": flowRate,
-			"yt":       yt,
-		}).Debug()
-		<-time.After(tick)
-	}
-}
-
 func changePulses(fr float64, rtt time.Duration) float64 {
-	if time.Since(pulseSwitchTime) < min_rtt {
-		return fr
-	}
-
 	switch pulseMode {
 	case PULSE_WAIT:
-		if time.Since(pulseSwitchTime) < 1*min_rtt {
+		if time.Since(pulseSwitchTime) < min_rtt {
 			return fr
 		}
 
-		numPulses = 10
 		if rtt > min_rtt+maxQd/2 {
 			pulseMode = UP_PULSE
 			pulseSwitchTime = time.Now()
@@ -304,23 +289,33 @@ func changePulses(fr float64, rtt time.Duration) float64 {
 		}
 		return fr
 	case UP_PULSE:
-		if numPulses <= 1 {
-			pulseMode = PULSE_WAIT
+		if time.Since(pulseSwitchTime) < min_rtt {
+			return fr * (1 + *pulseSize)
+			//return fr + (*pulseSize * est_bandwidth)
 		} else {
-			numPulses--
 			pulseMode = DOWN_PULSE
+			pulseSwitchTime = time.Now()
+			return fr
 		}
-		pulseSwitchTime = time.Now()
-		return fr * (1 + *pulseSize)
 	case DOWN_PULSE:
-		if numPulses <= 1 {
-			pulseMode = PULSE_WAIT
+		if time.Since(pulseSwitchTime) < min_rtt {
+			return fr * (1 - *pulseSize)
+			//ps := (*pulseSize) * est_bandwidth
+			//min_rate := float64(ONE_PACKET) / min_rtt.Seconds()
+			//if newRate := fr - ps; newRate > min_rate {
+			//	pulseSwitchTime = time.Now()
+			//	return newRate
+			//} else {
+			//	// set pulseSwitchTime to desired time of next switch - minrtt
+			//	pulseTime := ps * min_rtt.Seconds() / (fr - min_rate)
+			//	pulseSwitchTime = time.Now().Add(time.Duration(pulseTime)).Add(-1 * min_rtt)
+			//	return min_rate
+			//}
 		} else {
-			numPulses--
-			pulseMode = UP_PULSE
+			pulseMode = PULSE_WAIT
+			pulseSwitchTime = time.Now()
+			return fr
 		}
-		pulseSwitchTime = time.Now()
-		return fr * (1 - *pulseSize)
 	default:
 		err := fmt.Errorf("unknown pulse mode: %v", pulseMode)
 		log.Panic(err)
@@ -430,5 +425,15 @@ func doUpdate() {
 
 	if flowRate < 0 {
 		log.Panic("negative flow rate")
+	}
+}
+
+func flowRateUpdater() {
+	for _ = range time.Tick(time.Duration(10) * time.Millisecond) {
+		doUpdate()
+
+		if time.Now().After(endTime) {
+			doExit()
+		}
 	}
 }
