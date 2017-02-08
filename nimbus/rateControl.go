@@ -271,18 +271,16 @@ func measurePeriod() {
 			elast -= oldElast.(float64)
 		}
 
-		if debug {
-			log.WithFields(log.Fields{
-				"elapsed":  time.Since(startTime),
-				"zt":       zt,
-				"rtt":      rtt,
-				"rin":      rin,
-				"rout":     rout,
-				"elast":    elast,
-				"flowRate": flowRate,
-				"yt":       yt,
-			}).Debug()
-		}
+		log.WithFields(log.Fields{
+			"elapsed":  time.Since(startTime),
+			"zt":       zt,
+			"rtt":      rtt,
+			"rin":      rin,
+			"rout":     rout,
+			"elast":    elast,
+			"flowRate": flowRate,
+			"yt":       yt,
+		}).Debug()
 		<-time.After(tick)
 	}
 }
@@ -353,20 +351,16 @@ func shouldSwitch(rtt time.Duration) {
 
 	// can't test properly if rtt too high or low
 	if r := rtt.Seconds(); r < 1.25*min_rtt.Seconds() {
-		if debug {
-			log.WithFields(log.Fields{
-				"rtt":    rtt,
-				"thresh": delayThreshold * min_rtt.Seconds(),
-			}).Debug("rtt too low")
-		}
+		log.WithFields(log.Fields{
+			"rtt":    rtt,
+			"thresh": delayThreshold * min_rtt.Seconds(),
+		}).Debug("rtt too low")
 		return
 	} else if r > min_rtt.Seconds()+0.5*maxQd.Seconds() {
-		if debug {
-			log.WithFields(log.Fields{
-				"rtt":    rtt,
-				"thresh": min_rtt.Seconds() + 0.5*maxQd.Seconds(),
-			}).Debug("rtt too big")
-		}
+		log.WithFields(log.Fields{
+			"rtt":    rtt,
+			"thresh": min_rtt.Seconds() + 0.5*maxQd.Seconds(),
+		}).Debug("rtt too big")
 		switchToXtcp(rtt)
 		return
 	}
@@ -383,20 +377,14 @@ func shouldSwitch(rtt time.Duration) {
 	sec2 := elasticityWindow(totElast, time.Duration(2)*time.Second)
 	minrtt10 := elasticityWindow(totElast, 10*min_rtt)
 
-	if debug {
-		fmt.Printf("ELASTICITY: %v %v %v %v\n", time.Since(startTime), sec5, sec2, minrtt10)
-	}
+	log.Debug("ELASTICITY: ", time.Since(startTime), " ", sec5, " ", sec2, " ", minrtt10)
 
 	if sec2 > 0 {
-		if debug {
-			fmt.Println("delay, elast not low long term", sec2)
-		}
+		log.Debug("delay, elast not low long term ", sec2)
 		switchToDelay(rtt)
 		return
 	} else if sec5 < -0.1 {
-		if debug {
-			fmt.Println("xtcp, elast low long term", sec5)
-		}
+		log.Debug("xtcp, elast low long term ", sec5)
 		switchToXtcp(rtt)
 		return
 	}

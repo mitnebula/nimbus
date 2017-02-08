@@ -33,7 +33,6 @@ var sendCount int64
 var recvCount int64
 var startTime time.Time
 var endTime time.Time
-var debug bool
 
 func main() {
 	flag.Parse()
