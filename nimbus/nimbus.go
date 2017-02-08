@@ -19,6 +19,10 @@ var runtime = flag.Duration("t", time.Duration(180)*time.Second, "runtime in sec
 var numVirtualFlows = flag.Int("numFlows", 1, "number of virtual flows")
 var estBandwidth = flag.Float64("estBandwidth", 24e6, "estimated bandwidth")
 var pulseSize = flag.Float64("pulseSize", 0.5, "size of pulses to send as fraction of rate")
+var initUseSwitching = flag.Bool("useSwitching", true, "if false, do not pulse, always stay in delay mode")
+var initReportInterval = flag.Int64("reportIntervalMs", 2000, "how often to report throughput and delay, in milliseconds")
+var initDelayThreshold = flag.Float64("delayThreshold", 1.25, "use delay threshold of min_rtt * X")
+var initDebug = flag.Bool("debug", false, "if true, print extra messages for debugging")
 
 // TODO make a slow start-like startup
 var initRate = flag.Float64("initRate", 10e6, "initial sending rate")
@@ -29,6 +33,7 @@ var sendCount int64
 var recvCount int64
 var startTime time.Time
 var endTime time.Time
+var debug bool
 
 func main() {
 	flag.Parse()
@@ -53,6 +58,10 @@ func main() {
 
 	est_bandwidth = *estBandwidth
 	flowRate = *initRate
+	reportInterval = *initReportInterval
+	useSwitching = *initUseSwitching
+	delayThreshold = *initDelayThreshold
+	debug = *initDebug
 
 	xtcpData.numVirtualFlows = uint16(*numVirtualFlows)
 	xtcpData.setXtcpCwnd(flowRate, time.Duration(150)*time.Millisecond)

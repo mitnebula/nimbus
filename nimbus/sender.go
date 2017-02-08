@@ -17,6 +17,8 @@ const (
 var flowRate float64
 var flowRateLock sync.Mutex
 
+var reportInterval int64
+
 var min_rtt time.Duration
 
 // Log is thread-safe
@@ -114,13 +116,13 @@ func Sender(ip string, port string) error {
 }
 
 func output() {
-	for _ = range time.Tick(2 * time.Second) {
+	for _ = range time.Tick(time.Duration(reportInterval) * time.Millisecond) {
 		rtt, _ := rtts.Latest()
-		inTpt, _, _, err := ThroughputFromTimes(sendTimes, time.Now(), time.Duration(2)*time.Second)
+		inTpt, _, _, err := ThroughputFromTimes(sendTimes, time.Now(), time.Duration(reportInterval)*time.Millisecond)
 		if err != nil {
 			inTpt = 0
 		}
-		outTpt, _, _, err := ThroughputFromTimes(ackTimes, time.Now(), time.Duration(2)*time.Second)
+		outTpt, _, _, err := ThroughputFromTimes(ackTimes, time.Now(), time.Duration(reportInterval)*time.Millisecond)
 		if err != nil {
 			outTpt = 0
 		}

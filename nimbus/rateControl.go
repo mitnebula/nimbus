@@ -24,6 +24,8 @@ const (
 )
 
 var est_bandwidth float64
+var useSwitching bool
+var delayThreshold float64
 
 var beta float64
 
@@ -128,7 +130,7 @@ func updateRateDelay(
 ) float64 {
 	beta = 0.5
 	delta := rtt.Seconds()
-	newRate := rin + alpha*(est_bandwidth-zt-rin) - ((est_bandwidth*beta)/delta)*(rtt.Seconds()-(1.25*min_rtt.Seconds()))
+	newRate := rin + alpha*(est_bandwidth-zt-rin) - ((est_bandwidth*beta)/delta)*(rtt.Seconds()-(delayThreshold*min_rtt.Seconds()))
 
 	minRate := float64(ONE_PACKET) / min_rtt.Seconds() // send at least 1 packet per rtt
 	if newRate < minRate || math.IsNaN(newRate) {
@@ -260,7 +262,9 @@ func measurePeriod() {
 			elast -= oldElast.(float64)
 		}
 
-		fmt.Printf("%v : %v %v %v %v %v %v %v\n", time.Since(startTime), zt, rtt, rin, rout, elast, flowRate, yt)
+		if debug {
+			fmt.Printf("%v : %v %v %v %v %v %v %v\n", time.Since(startTime), zt, rtt, rin, rout, elast, flowRate, yt)
+		}
 		<-time.After(tick)
 	}
 }
@@ -330,10 +334,14 @@ func shouldSwitch(rtt time.Duration) {
 
 	// can't test properly if rtt too high or low
 	if r := rtt.Seconds(); r < 1.25*min_rtt.Seconds() {
-		fmt.Println("rtt too low", rtt, 1.25*min_rtt.Seconds())
+		if debug {
+			fmt.Println("rtt too low", rtt, 1.25*min_rtt.Seconds())
+		}
 		return
 	} else if r > min_rtt.Seconds()+0.5*maxQd.Seconds() {
-		fmt.Println("rtt too big", rtt, min_rtt.Seconds()+0.5*maxQd.Seconds())
+		if debug {
+			fmt.Println("rtt too big", rtt, min_rtt.Seconds()+0.5*maxQd.Seconds())
+		}
 		switchToXtcp(rtt)
 		return
 	}
@@ -350,14 +358,20 @@ func shouldSwitch(rtt time.Duration) {
 	sec2 := elasticityWindow(totElast, time.Duration(2)*time.Second)
 	minrtt10 := elasticityWindow(totElast, 10*min_rtt)
 
-	fmt.Printf("ELASTICITY: %v %v %v %v\n", time.Since(startTime), sec5, sec2, minrtt10)
+	if debug {
+		fmt.Printf("ELASTICITY: %v %v %v %v\n", time.Since(startTime), sec5, sec2, minrtt10)
+	}
 
 	if sec2 > 0 {
-		fmt.Println("delay, elast not low long term", sec2)
+		if debug {
+			fmt.Println("delay, elast not low long term", sec2)
+		}
 		switchToDelay(rtt)
 		return
 	} else if sec5 < -0.1 {
-		fmt.Println("xtcp, elast low long term", sec5)
+		if debug {
+			fmt.Println("xtcp, elast low long term", sec5)
+		}
 		switchToXtcp(rtt)
 		return
 	}
