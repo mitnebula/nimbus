@@ -40,6 +40,8 @@ var modeSwitchTime time.Time
 // test state
 var pulseMode PulseMode
 var pulseSwitchTime time.Time
+var numPulses = 0
+
 var totElasticity float64
 
 var maxQd time.Duration
@@ -222,15 +224,15 @@ func measure(interval time.Duration) (
 	oldXt := oldXtVal.(float64)
 
 	log.WithFields(log.Fields{
-		"elapsed":  time.Since(startTime),
-		"zt":       zt,
-		"rtt":      rtt,
-		"rin":      rin,
-		"rout":     rout,
-		"elast":    elast,
-		"flowRate": flowRate,
-		"yt":       yt,
-		"oldYt":    oldXt,
+		"elapsed":    time.Since(startTime),
+		"zt":         zt,
+		"rtt":        rtt,
+		"rin":        rin,
+		"rout":       rout,
+		"elast_5sec": elast,
+		"flowRate":   flowRate,
+		"yt":         yt,
+		"oldYt":      oldXt,
 	}).Debug()
 	return
 }
@@ -270,16 +272,16 @@ func integrateElasticity(zt float64, rtt time.Duration) float64 {
 
 	esty_history.Add(time.Now(), totEsty)
 	return totEsty
-	//totElasticity += elasticity
 }
 
 func changePulses(fr float64, rtt time.Duration) float64 {
+	if time.Since(pulseSwitchTime) < min_rtt {
+		return fr
+	}
+
 	switch pulseMode {
 	case PULSE_WAIT:
-		if time.Since(pulseSwitchTime) < min_rtt {
-			return fr
-		}
-
+		numPulses = 2
 		if rtt > min_rtt+maxQd/2 {
 			pulseMode = UP_PULSE
 			pulseSwitchTime = time.Now()
@@ -289,32 +291,26 @@ func changePulses(fr float64, rtt time.Duration) float64 {
 		}
 		return fr
 	case UP_PULSE:
-		if time.Since(pulseSwitchTime) < min_rtt {
-			return fr * (1 + *pulseSize)
-			//return fr + (*pulseSize * est_bandwidth)
-		} else {
-			pulseMode = DOWN_PULSE
-			pulseSwitchTime = time.Now()
-			return fr
-		}
-	case DOWN_PULSE:
-		if time.Since(pulseSwitchTime) < min_rtt {
-			return fr * (1 - *pulseSize)
-			//ps := (*pulseSize) * est_bandwidth
-			//min_rate := float64(ONE_PACKET) / min_rtt.Seconds()
-			//if newRate := fr - ps; newRate > min_rate {
-			//	pulseSwitchTime = time.Now()
-			//	return newRate
-			//} else {
-			//	// set pulseSwitchTime to desired time of next switch - minrtt
-			//	pulseTime := ps * min_rtt.Seconds() / (fr - min_rate)
-			//	pulseSwitchTime = time.Now().Add(time.Duration(pulseTime)).Add(-1 * min_rtt)
-			//	return min_rate
-			//}
-		} else {
+		if numPulses == 0 {
 			pulseMode = PULSE_WAIT
 			pulseSwitchTime = time.Now()
-			return fr
+			return fr / (1 + *pulseSize)
+		} else {
+			numPulses--
+			pulseMode = DOWN_PULSE
+			pulseSwitchTime = time.Now()
+			return fr * (1 - *pulseSize) / (1 + *pulseSize)
+		}
+	case DOWN_PULSE:
+		if numPulses == 0 {
+			pulseMode = PULSE_WAIT
+			pulseSwitchTime = time.Now()
+			return fr / (1 - *pulseSize)
+		} else {
+			numPulses--
+			pulseMode = UP_PULSE
+			pulseSwitchTime = time.Now()
+			return fr * (1 + *pulseSize) / (1 - *pulseSize)
 		}
 	default:
 		err := fmt.Errorf("unknown pulse mode: %v", pulseMode)
@@ -416,7 +412,6 @@ func doUpdate() {
 			zt,
 			rtt,
 		)
-
 	case XTCP:
 		flowRate = xtcpData.updateRateXtcp(rtt)
 	}
