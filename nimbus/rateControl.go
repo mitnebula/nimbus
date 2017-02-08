@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	log "github.com/Sirupsen/logrus"
 	"math"
 	"time"
 
@@ -97,7 +98,11 @@ func switchToDelay(rtt time.Duration) {
 		return
 	}
 
-	fmt.Printf("[%v] : %s -> DELAY\n", NowPretty(), currMode)
+	log.WithFields(log.Fields{
+		"from": currMode,
+		"to":   "DELAY",
+	}).Info("switched mode")
+	//fmt.Printf("[%v] : %s -> DELAY\n", NowPretty(), currMode)
 	//fmt.Printf("%v : %s -> DELAY\n", time.Since(startTime), currMode)
 
 	flowMode = DELAY
@@ -111,7 +116,11 @@ func switchToXtcp(rtt time.Duration) {
 		return
 	}
 
-	fmt.Printf("[%v] : %s -> XTCP\n", NowPretty(), currMode)
+	log.WithFields(log.Fields{
+		"from": currMode,
+		"to":   "XTCP",
+	}).Info("switched mode")
+	//fmt.Printf("[%v] : %s -> XTCP\n", NowPretty(), currMode)
 	//fmt.Printf("%v : %s -> XTCP\n", time.Since(startTime), currMode)
 
 	flowMode = XTCP
@@ -263,7 +272,16 @@ func measurePeriod() {
 		}
 
 		if debug {
-			fmt.Printf("%v : %v %v %v %v %v %v %v\n", time.Since(startTime), zt, rtt, rin, rout, elast, flowRate, yt)
+			log.WithFields(log.Fields{
+				"elapsed":  time.Since(startTime),
+				"zt":       zt,
+				"rtt":      rtt,
+				"rin":      rin,
+				"rout":     rout,
+				"elast":    elast,
+				"flowRate": flowRate,
+				"yt":       yt,
+			}).Debug()
 		}
 		<-time.After(tick)
 	}
@@ -309,7 +327,8 @@ func changePulses(fr float64, rtt time.Duration) float64 {
 		return fr * (1 - *pulseSize)
 	default:
 		err := fmt.Errorf("unknown pulse mode: %v", pulseMode)
-		panic(err)
+		log.Panic(err)
+		return -1
 	}
 }
 
@@ -335,12 +354,18 @@ func shouldSwitch(rtt time.Duration) {
 	// can't test properly if rtt too high or low
 	if r := rtt.Seconds(); r < 1.25*min_rtt.Seconds() {
 		if debug {
-			fmt.Println("rtt too low", rtt, 1.25*min_rtt.Seconds())
+			log.WithFields(log.Fields{
+				"rtt":    rtt,
+				"thresh": delayThreshold * min_rtt.Seconds(),
+			}).Debug("rtt too low")
 		}
 		return
 	} else if r > min_rtt.Seconds()+0.5*maxQd.Seconds() {
 		if debug {
-			fmt.Println("rtt too big", rtt, min_rtt.Seconds()+0.5*maxQd.Seconds())
+			log.WithFields(log.Fields{
+				"rtt":    rtt,
+				"thresh": min_rtt.Seconds() + 0.5*maxQd.Seconds(),
+			}).Debug("rtt too big")
 		}
 		switchToXtcp(rtt)
 		return
@@ -348,7 +373,7 @@ func shouldSwitch(rtt time.Duration) {
 
 	totElastVal, _, err := esty_history.Before(time.Now())
 	if err != nil {
-		fmt.Println(err)
+		log.Error(err)
 		return
 	}
 
@@ -405,6 +430,6 @@ func doUpdate() {
 	flowRate = changePulses(flowRate, rtt)
 
 	if flowRate < 0 {
-		panic("negative flow rate")
+		log.Panic("negative flow rate")
 	}
 }

@@ -2,7 +2,7 @@ package main
 
 import (
 	"flag"
-	"fmt"
+	log "github.com/Sirupsen/logrus"
 	"os"
 	"os/signal"
 	"runtime/pprof"
@@ -22,7 +22,7 @@ var pulseSize = flag.Float64("pulseSize", 0.5, "size of pulses to send as fracti
 var initUseSwitching = flag.Bool("useSwitching", true, "if false, do not pulse, always stay in delay mode")
 var initReportInterval = flag.Int64("reportIntervalMs", 2000, "how often to report throughput and delay, in milliseconds")
 var initDelayThreshold = flag.Float64("delayThreshold", 1.25, "use delay threshold of min_rtt * X")
-var initDebug = flag.Bool("debug", false, "if true, print extra messages for debugging")
+var initLogLevel = flag.String("log", "info", "logrus log level: (info | warn | debug | error | fatal | panic)")
 
 // TODO make a slow start-like startup
 var initRate = flag.Float64("initRate", 10e6, "initial sending rate")
@@ -37,18 +37,40 @@ var debug bool
 
 func main() {
 	flag.Parse()
+
+	customFormatter := new(log.TextFormatter)
+	customFormatter.TimestampFormat = "15:04:05.000000"
+	customFormatter.FullTimestamp = true
+	log.SetFormatter(customFormatter)
+	lvl, parseErr := log.ParseLevel(*initLogLevel)
+	if parseErr != nil {
+		log.Fatal(parseErr)
+	}
+	log.SetLevel(lvl)
+
 	if *cpuprofile != "" {
 		f, err := os.Create(*cpuprofile)
 		if err != nil {
-			fmt.Println("could not create CPU profile: ", err)
+			log.Error("could not create CPU profile: ", err)
 		}
 		if err := pprof.StartCPUProfile(f); err != nil {
-			fmt.Println("could not start CPU profile: ", err)
+			log.Error("could not start CPU profile: ", err)
 		}
 		defer pprof.StopCPUProfile()
 	}
 
-	fmt.Printf("%s:%s, %s\n", *ip, *port, *mode)
+	log.WithFields(log.Fields{
+		"ip":              *ip,
+		"port":            *port,
+		"switching":       *initUseSwitching,
+		"interval":        *initReportInterval,
+		"delay_threshold": *initDelayThreshold,
+		"log":             *initLogLevel,
+		"num_flows":       *numVirtualFlows,
+		"runtime":         *runtime,
+		"est_bandwidth":   *estBandwidth,
+		"pulse_size":      *pulseSize,
+	}).Info("Starting ", *mode)
 
 	//print on ctrl-c
 	done = make(chan interface{})
@@ -61,7 +83,6 @@ func main() {
 	reportInterval = *initReportInterval
 	useSwitching = *initUseSwitching
 	delayThreshold = *initDelayThreshold
-	debug = *initDebug
 
 	xtcpData.numVirtualFlows = uint16(*numVirtualFlows)
 	xtcpData.setXtcpCwnd(flowRate, time.Duration(150)*time.Millisecond)
@@ -89,7 +110,7 @@ func main() {
 		endTime = startTime.Add(*runtime)
 	}
 	if err != nil {
-		fmt.Println(err)
+		log.Error(err)
 	}
 
 	<-done
@@ -102,12 +123,17 @@ func exitStats(interrupt chan os.Signal) {
 
 func doExit() {
 	elapsed := time.Since(startTime)
-	totalBytes := float64(sendCount * ONE_PACKET)
-	fmt.Printf("Sent: throughput %.4vMbps; %v packets in %v\n",
-		BpsToMbps(totalBytes/elapsed.Seconds()), sendCount, elapsed)
-	totalBytes = float64(recvCount * ONE_PACKET)
-	fmt.Printf("Received: throughput %.4vMbps; %v packets in %v\n",
-		BpsToMbps(totalBytes/elapsed.Seconds()), recvCount, elapsed)
+	sendBytes := float64(sendCount * ONE_PACKET)
+	recvBytes := float64(recvCount * ONE_PACKET)
+	log.WithFields(log.Fields{
+		"throughput": BpsToMbps(sendBytes / elapsed.Seconds()),
+		"pkts":       sendCount,
+	}).Info("Send statistics")
+	log.WithFields(log.Fields{
+		"throughput": BpsToMbps(recvBytes / elapsed.Seconds()),
+		"pkts":       recvCount,
+	}).Info("Receive statistics")
+	log.Info(elapsed, " elapsed")
 	done <- struct{}{}
 	os.Exit(0)
 

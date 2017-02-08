@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	log "github.com/Sirupsen/logrus"
 	"net"
 	"sync"
 	"time"
@@ -80,7 +80,7 @@ func Server(port string) error {
 func Sender(ip string, port string) error {
 	conn, toAddr, err := packetops.SetupClientSock(ip, port)
 	if err != nil {
-		return fmt.Errorf("sock setup err: %v", err)
+		log.Error("socket setup err: ", err)
 	}
 
 	rtt_history := make(chan int64)
@@ -96,12 +96,12 @@ func Sender(ip string, port string) error {
 
 	err = packetops.SynAckExchange(conn, toAddr, &syn)
 	if err != nil {
-		return fmt.Errorf("synack exch err: %v", err)
+		log.Error("synack exchange err: ", err)
 	}
 
 	xtcpData.checkXtcpSeq(syn.VirtFid, syn.SeqNo)
 
-	fmt.Println("connected")
+	log.Info("sender connected successfully.")
 
 	go handleAck(conn, toAddr, rtt_history)
 	go flowRateUpdater()
@@ -126,13 +126,13 @@ func output() {
 		if err != nil {
 			outTpt = 0
 		}
-		fmt.Printf("[%v] : in=%.3fMbps out=%.3fMbps rtt=%.6vms min=%.6vms %s\n",
-			NowPretty(),
-			BpsToMbps(inTpt),
-			BpsToMbps(outTpt),
-			rtt.(time.Duration),
-			min_rtt,
-			currMode)
+		log.WithFields(log.Fields{
+			"in":   BpsToMbps(inTpt),
+			"out":  BpsToMbps(outTpt),
+			"rtt":  rtt.(time.Duration),
+			"min":  min_rtt,
+			"mode": currMode,
+		}).Info()
 
 		if time.Now().After(endTime) {
 			doExit()
@@ -227,13 +227,13 @@ func handleAck(
 	for {
 		err := packetops.Listen(conn, pktBuf)
 		if err != nil {
-			fmt.Println(err)
+			log.Error(err)
 			continue
 		}
 
 		err = ack.Decode(pktBuf)
 		if err != nil {
-			fmt.Println(err)
+			log.Error(err)
 			continue
 		}
 

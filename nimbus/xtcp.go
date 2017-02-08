@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	log "github.com/Sirupsen/logrus"
 	"math/rand"
 	"sync"
 	"time"
@@ -129,7 +130,7 @@ func (xt *xtcpDataContainer) checkXtcpSeq(fid uint16, seq uint32) bool {
 	expected := xt.recv_seq_nos[fid]
 	if seq < expected {
 		err := fmt.Errorf("seq out of order: %v %v fid %v", seq, expected, fid)
-		panic(err)
+		log.Panic(err)
 	}
 
 	xt.recv_seq_nos[fid] = seq + 1
