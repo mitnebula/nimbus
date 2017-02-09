@@ -99,11 +99,10 @@ func switchToDelay(rtt time.Duration) {
 	}
 
 	log.WithFields(log.Fields{
-		"from": currMode,
-		"to":   "DELAY",
+		"elapsed": time.Since(startTime),
+		"from":    currMode,
+		"to":      "DELAY",
 	}).Info("switched mode")
-	//fmt.Printf("[%v] : %s -> DELAY\n", NowPretty(), currMode)
-	//fmt.Printf("%v : %s -> DELAY\n", time.Since(startTime), currMode)
 
 	flowMode = DELAY
 	currMode = "DELAY"
@@ -117,11 +116,10 @@ func switchToXtcp(rtt time.Duration) {
 	}
 
 	log.WithFields(log.Fields{
-		"from": currMode,
-		"to":   "XTCP",
+		"elapsed": time.Since(startTime),
+		"from":    currMode,
+		"to":      "XTCP",
 	}).Info("switched mode")
-	//fmt.Printf("[%v] : %s -> XTCP\n", NowPretty(), currMode)
-	//fmt.Printf("%v : %s -> XTCP\n", time.Since(startTime), currMode)
 
 	flowMode = XTCP
 	currMode = "XTCP"
@@ -352,14 +350,16 @@ func shouldSwitch(rtt time.Duration) {
 	// can't test properly if rtt too high or low
 	if r := rtt.Seconds(); r < 1.25*min_rtt.Seconds() {
 		log.WithFields(log.Fields{
-			"rtt":    rtt,
-			"thresh": delayThreshold * min_rtt.Seconds(),
+			"elapsed": time.Since(startTime),
+			"rtt":     rtt,
+			"thresh":  delayThreshold * min_rtt.Seconds(),
 		}).Debug("rtt too low")
 		return
 	} else if r > min_rtt.Seconds()+0.5*maxQd.Seconds() {
 		log.WithFields(log.Fields{
-			"rtt":    rtt,
-			"thresh": min_rtt.Seconds() + 0.5*maxQd.Seconds(),
+			"elapsed": time.Since(startTime),
+			"rtt":     rtt,
+			"thresh":  min_rtt.Seconds() + 0.5*maxQd.Seconds(),
 		}).Debug("rtt too big")
 		switchToXtcp(rtt)
 		return
@@ -377,14 +377,25 @@ func shouldSwitch(rtt time.Duration) {
 	sec2 := elasticityWindow(totElast, time.Duration(2)*time.Second)
 	minrtt10 := elasticityWindow(totElast, 10*min_rtt)
 
-	log.Debug("ELASTICITY: ", time.Since(startTime), " ", sec5, " ", sec2, " ", minrtt10)
+	log.WithFields(log.Fields{
+		"elapsed":  time.Since(startTime),
+		"5sec":     sec5,
+		"2sec":     sec2,
+		"10minrtt": minrtt10,
+	}).Debug("ELASTICITY")
 
 	if sec2 > 0 {
-		log.Debug("delay, elast not low long term ", sec2)
+		log.WithFields(log.Fields{
+			"elapsed": time.Since(startTime),
+			"2sec":    sec2,
+		}).Debug("elast above thresh")
 		switchToDelay(rtt)
 		return
 	} else if sec5 < -0.1 {
-		log.Debug("xtcp, elast low long term ", sec5)
+		log.WithFields(log.Fields{
+			"elapsed": time.Since(startTime),
+			"5sec":    sec5,
+		}).Debug("elast below thresh")
 		switchToXtcp(rtt)
 		return
 	}

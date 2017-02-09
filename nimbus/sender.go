@@ -127,11 +127,12 @@ func output() {
 			outTpt = 0
 		}
 		log.WithFields(log.Fields{
-			"in":   BpsToMbps(inTpt),
-			"out":  BpsToMbps(outTpt),
-			"rtt":  rtt.(time.Duration),
-			"min":  min_rtt,
-			"mode": currMode,
+			"elapsed": time.Since(startTime),
+			"in":      BpsToMbps(inTpt),
+			"out":     BpsToMbps(outTpt),
+			"rtt":     rtt.(time.Duration),
+			"min":     min_rtt,
+			"mode":    currMode,
 		}).Info()
 
 		if time.Now().After(endTime) {
