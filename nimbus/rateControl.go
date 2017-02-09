@@ -378,23 +378,23 @@ func shouldSwitch(rtt time.Duration) {
 	minrtt10 := elasticityWindow(totElast, 10*min_rtt)
 
 	log.WithFields(log.Fields{
-		"elapsed":  time.Since(startTime),
-		"5sec":     sec5,
-		"2sec":     sec2,
-		"10minrtt": minrtt10,
+		"elapsed":        time.Since(startTime),
+		"elast_5sec":     sec5,
+		"elast_2sec":     sec2,
+		"elast_10minrtt": minrtt10,
 	}).Debug("ELASTICITY")
 
 	if sec2 > 0 {
 		log.WithFields(log.Fields{
-			"elapsed": time.Since(startTime),
-			"2sec":    sec2,
+			"elapsed":    time.Since(startTime),
+			"elast_2sec": sec2,
 		}).Debug("elast above thresh")
 		switchToDelay(rtt)
 		return
 	} else if sec5 < -0.1 {
 		log.WithFields(log.Fields{
-			"elapsed": time.Since(startTime),
-			"5sec":    sec5,
+			"elapsed":    time.Since(startTime),
+			"elast_5sec": sec5,
 		}).Debug("elast below thresh")
 		switchToXtcp(rtt)
 		return
