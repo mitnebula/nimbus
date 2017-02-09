@@ -34,6 +34,10 @@ var recvCount int64
 var startTime time.Time
 var endTime time.Time
 
+func init() {
+	log.SetOutput(os.Stdout)
+}
+
 func main() {
 	flag.Parse()
 
