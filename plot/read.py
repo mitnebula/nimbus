@@ -3,16 +3,49 @@
 import sys
 import re
 
+def readTrace(fn):
+    with open(fn, 'r') as f:
+        for line in f:
+            yield readLine(line)
+
+def readLine(line):
+    res = {}
+    matches = re.findall(r'(.+?)=("(.+?)"|(.+?)) ', line)
+    for m in matches:
+        k, v = parseField(m)
+        res[k] = v
+
+    return res
+
+def parseField(match):
+    k = match[0]
+    v = match[3]
+    if match[1][0] == '"':
+        v = match[2]
+        return k, v
+
+    # try parsing as time
+    t = parseTime(v)
+    if t is not None:
+        return k, parseTime(v)
+
+    # try parsing as float
+    try:
+        return k, float(v)
+    except:
+        # just parse as string
+        return k, v
+
 def parseTime(t):
     matches = re.findall(r'([0-9]+m)?([0-9]+?\.?[0-9]*)s|([0-9]+?\.?[0-9]*)ms', t)
     if len(matches) == 0:
-        #microseconds/
+        #microseconds
         matches = re.findall(r'([0-9]+?\.?[0-9]+).+s', t)
         if len(matches) == 0:
             if t == '0s':
                 return 0
             else:
-                print t
+                return None
         usecs_m = matches[0]
         return float(usecs_m) * 1e-6
     mnts_m, secs_m, mses_m = matches[0]
@@ -27,55 +60,6 @@ def parseTime(t):
         secs = float(secs_m)
     return mnts + secs
 
-def parseTptOutput(sp):
-    t, _, rin, rout, rtt, _, mode = sp
-    ret = {
-        'time': parseTime(t),
-        'rin': float(rin),
-        'rout': float(rout),
-        'rtt': parseTime(rtt),
-        'mode': mode,
-    }
-    return ret
-
-def parseSwitchOutput(sp):
-    if len(sp) > 5:
-        sp = sp[:5]
-    print sp
-    t, _, fr, _, to = sp
-    return {
-        'time': parseTime(t),
-        'from': fr,
-        'to': to,
-    }
-
-def readNimbusLines(f):
-    for line in f:
-        sp = line.split()
-        if sp[0] == 'Received:':
-            yield {
-                'rout': float(sp[2][:-1]),
-            }
-
-        if len(sp) < 2 or sp[1] != ':':
-            continue
-
-        if len(sp) == 7:
-            yield parseTptOutput(sp)
-        elif len(sp) == 5 and sp[3] == '->':
-            yield parseSwitchOutput(sp)
-
-def readIperfLines(f):
-    ls = f.readlines()
-
-    # first line is start time
-    for l in ls[:-1]:
-        matches = re.findall(r'-\s?([0-9]+\.0) sec .*\s([0-9]+\.[0-9]+) Mbits', l)
-        if len(matches) != 1:
-            continue
-        t, bw = matches[0]
-
-        yield {
-            'time': float(t),
-            'tpt': float(bw),
-        }
+if __name__ == '__main__':
+    for l in readTrace(sys.argv[1]):
+        print l

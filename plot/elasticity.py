@@ -1,12 +1,13 @@
 #!/usr/bin/python
 
 import sys
+import math
 import matplotlib
 from matplotlib import pyplot as plt
 import numpy as np
 
-from elasticity_all import read, vlines, elast, switches
-from read import parseTime
+from read import readTrace
+from switches import readSwitches, vlines
 
 matplotlib.rc('font', family='sans-serif')
 matplotlib.rc('font', serif='Futura Medium')
@@ -16,65 +17,25 @@ matplotlib.rcParams.update({'font.size': 14})
 plt.cla()
 plt.clf()
 
-def readElast(fn):
-    with open(fn, 'r') as f:
-        for line in f:
-            sp = line.split()
-            if sp[0] == 'ELASTICITY:':
-                if len(sp) != 6:
-                    continue
-                _, t, tot, sec5, sec2, short = sp
-                yield {
-                    't': parseTime(t),
-                    'tot': float(tot),
-                    '5sec': float(sec5),
-                    '2sec': float(sec2),
-                    'short': float(short),
-                }
+def readElast(tr):
+    for e in (t for t in tr if any('elast' in k for k in t.keys())):
+        if 'elast_5sec' in e and 'msg' in e and e['msg'] == 'ELASTICITY':
+            yield (e['elapsed'], -e['elast_5sec'])
 
-def sec5(ls):
-    for l in ls:
-        if 't' in l and '5sec' in l:
-            yield l['t'], -l['5sec']
-def sec2(ls):
-    for l in ls:
-        if 't' in l and '2sec' in l:
-            yield l['t'], -l['2sec']
-def secShort(ls):
-    for l in ls:
-        if 't' in l and 'short' in l:
-            yield l['t'], -l['short']
+if __name__ == '__main__':
+    tr = list(readTrace(sys.argv[1]))
+    t, el5 = zip(*readElast(tr))
+    sw = list(readSwitches(tr))
+    print 'sw', len(sw)
 
-def plotWorkload(fn, ax, title):
-    ls = list(read(fn))
-    els = list(readElast(fn))
-
-    nxa, s5 = zip(*sec5(els))
-    _, s2 = zip(*sec2(els))
-    _, mr10 = zip(*secShort(els))
-    sw = list(switches(ls))
-
+    fig = plt.figure(1)
+    ax = fig.gca()
     ax.set_xlabel('Time (s)')
     ax.set_ylabel('Elasticity')
-    vlines(plt, sw)
-    #ax.set_title(title)
     ax.set_xlim(0, 60)
     ax.set_ylim(-0.5, 1.5)
     ax.grid()
-    ax.plot(nxa, s5, 'b-', label='5s')
-    ax.plot(nxa, s2, 'g-', label='2s')
-    ax.plot(nxa, mr10, 'r-', label='10 min_rtt')
+    vlines(ax, sw)
+    ax.plot(t, el5, 'b-')
 
-    ax.legend(loc='lower left', ncol=3)
-
-if __name__ == '__main__':
-    #f, (cbr, tcp, pois) = plt.subplots(1, 3)
-    #plotWorkload('e3-cbr.out', cbr, 'Inelastic')
-    #plotWorkload('e3-tcp.out', tcp, 'Elastic')
-    #plotWorkload('e3-poisson.out', pois, 'Inelastic Poisson')
-
-    fig = plt.figure(1, figsize=(4, 3))
-    plotWorkload(sys.argv[1], fig.gca(), sys.argv[2])
-
-
-    plt.savefig('{}-elasticity.pdf'.format(sys.argv[2]))
+    plt.show()
