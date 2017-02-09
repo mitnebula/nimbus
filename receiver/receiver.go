@@ -17,10 +17,6 @@ func init() {
 	rcvd = &packetops.RawPacket{
 		Buf: make([]byte, 1500),
 	}
-
-	ackBuffer = &packetops.RawPacket{
-		Buf: make([]byte, 1500),
-	}
 }
 
 func Client(ip string, port string, syn packetops.Packet, rCount *int64, hdrOff int) error {
@@ -30,6 +26,10 @@ func Client(ip string, port string, syn packetops.Packet, rCount *int64, hdrOff 
 	conn, _, err := packetops.SetupClientSock(ip, port)
 	if err != nil {
 		return err
+	}
+
+	ackBuffer = &packetops.RawPacket{
+		Buf: make([]byte, (headerOffset + 8)),
 	}
 
 	go receive(conn)
@@ -48,6 +48,10 @@ func Receiver(port string, syn packetops.Packet, rCount *int64, hdrOff int) erro
 	conn, listenAddr, err := packetops.SetupListeningSock(port)
 	if err != nil {
 		return err
+	}
+
+	ackBuffer = &packetops.RawPacket{
+		Buf: make([]byte, (headerOffset + 8)),
 	}
 
 	conn, err = packetops.ListenForSyn(conn, listenAddr, syn)
@@ -105,6 +109,9 @@ func doReceive(
 
 	makeAck(ackBuffer, lastTime.UnixNano())
 
+	if len(ackBuffer.Buf) != (headerOffset + 8) {
+		log.Panic("ack too big")
+	}
 	err = packetops.SendRaw(conn, ackBuffer)
 	if err != nil {
 		return err
