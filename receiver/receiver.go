@@ -1,7 +1,7 @@
 package receiver
 
 import (
-	"fmt"
+	log "github.com/Sirupsen/logrus"
 	"net"
 	"time"
 
@@ -61,14 +61,14 @@ func Receiver(port string, syn packetops.Packet, rCount *int64, hdrOff int) erro
 		now := time.Now().UnixNano()
 		rawSyn, err := syn.Encode(0)
 		if err != nil {
-			fmt.Println(err)
+			log.Error(err)
 			return
 		}
 
 		makeAck(rawSyn, now)
 		err = packetops.SendRaw(conn, rawSyn)
 		if err != nil {
-			fmt.Println(err)
+			log.Error(err)
 			return
 		}
 	}()
@@ -81,7 +81,7 @@ func receive(conn *net.UDPConn) error {
 	for {
 		err := doReceive(conn, &lastTime)
 		if err != nil {
-			fmt.Println(err)
+			log.Error(err)
 			continue
 		}
 
@@ -96,7 +96,7 @@ func doReceive(
 	err := packetops.Listen(conn, rcvd)
 	*lastTime = time.Now()
 	if err != nil {
-		fmt.Println(err)
+		log.Error(err)
 		return err
 	}
 
