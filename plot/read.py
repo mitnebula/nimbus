@@ -62,4 +62,9 @@ def parseTime(t):
 
 if __name__ == '__main__':
     for l in readTrace(sys.argv[1]):
-        print l
+        if len(sys.argv) == 2:
+            print l
+        else:
+            if all(a in l for a in sys.argv[2:]):
+                m = map(lambda a: str(l[a]), sys.argv[2:])
+                print ' '.join(m)
