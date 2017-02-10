@@ -22,13 +22,11 @@ def readElast(tr):
         if 'elast_5sec' in e and 'msg' in e and e['msg'] == 'ELASTICITY':
             yield (e['elapsed'], -e['elast_5sec'])
 
-if __name__ == '__main__':
-    tr = list(readTrace(sys.argv[1]))
+def makeElasticityPlot(name, tr, figInd):
     t, el5 = zip(*readElast(tr))
     sw = list(readSwitches(tr))
-    print 'sw', len(sw)
 
-    fig = plt.figure(1)
+    fig = plt.figure(figInd)
     ax = fig.gca()
     ax.set_xlabel('Time (s)')
     ax.set_ylabel('Elasticity')
@@ -36,6 +34,13 @@ if __name__ == '__main__':
     ax.set_ylim(-0.5, 1.5)
     ax.grid()
     vlines(ax, sw)
+    plt.title(name)
     ax.plot(t, el5, 'b-')
 
+    figInd += 1
+    return figInd
+
+if __name__ == '__main__':
+    tr = list(readTrace(sys.argv[1]))
+    makeElasticityPlot(sys.argv[1], tr, 1)
     plt.show()
