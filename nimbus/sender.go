@@ -17,7 +17,7 @@ const (
 var flowRate float64
 var flowRateLock sync.Mutex
 
-var reportInterval int64
+var reportInterval time.Duration
 
 var min_rtt time.Duration
 
@@ -114,13 +114,13 @@ func Sender(ip string, port string) error {
 }
 
 func output() {
-	for _ = range time.Tick(time.Duration(reportInterval) * time.Millisecond) {
+	for _ = range time.Tick(reportInterval) {
 		rtt, _ := rtts.Latest()
-		inTpt, _, _, err := ThroughputFromTimes(sendTimes, time.Now(), time.Duration(reportInterval)*time.Millisecond)
+		inTpt, _, _, err := ThroughputFromTimes(sendTimes, time.Now(), reportInterval)
 		if err != nil {
 			inTpt = 0
 		}
-		outTpt, _, _, err := ThroughputFromTimes(ackTimes, time.Now(), time.Duration(reportInterval)*time.Millisecond)
+		outTpt, _, _, err := ThroughputFromTimes(ackTimes, time.Now(), reportInterval)
 		if err != nil {
 			outTpt = 0
 		}
