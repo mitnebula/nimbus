@@ -217,7 +217,7 @@ func measure(interval time.Duration) (
 		elast -= oldElast.(float64)
 	}
 
-	oldXtVal, _, err := xt_history.Before(time.Now().Add(-1 * rtt))
+	oldXtVal, _, err := xt_history.Before(time.Now().Add(-1 * interval))
 	if err != nil {
 		return
 	}
@@ -239,9 +239,8 @@ func measure(interval time.Duration) (
 
 func integrateElasticity(zt float64, rtt time.Duration) float64 {
 	var totEsty float64
-	measurementInterval := time.Duration(10) * time.Millisecond
 
-	dZt, err := deltaZt(zt, measurementInterval)
+	dZt, err := deltaZt(zt, *measurementInterval)
 	if err != nil {
 		err = fmt.Errorf("deltaZt: %v", err)
 		return 0
@@ -254,7 +253,7 @@ func integrateElasticity(zt float64, rtt time.Duration) float64 {
 	}
 	oldYt := oldYtVal.(float64)
 
-	dYt, err := deltaYt(t, oldYt, measurementInterval)
+	dYt, err := deltaYt(t, oldYt, *measurementInterval)
 	if err != nil {
 		err = fmt.Errorf("deltaYt: %v", err)
 		return 0
@@ -393,7 +392,7 @@ func shouldSwitch(rtt time.Duration) {
 }
 
 func doUpdate() {
-	rin, _, zt, rtt, err := measure(min_rtt)
+	rin, _, zt, rtt, err := measure(time.Duration(*measurementTimescale*min_rtt.Nanoseconds()) * time.Nanosecond)
 	if err != nil {
 		return
 	}
@@ -424,7 +423,7 @@ func doUpdate() {
 }
 
 func flowRateUpdater() {
-	for _ = range time.Tick(time.Duration(10) * time.Millisecond) {
+	for _ = range time.Tick(*measurementInterval) {
 		doUpdate()
 
 		if time.Now().After(endTime) {

@@ -11,22 +11,24 @@ import (
 	"github.mit.edu/hari/nimbus-cc/receiver"
 )
 
+var cpuprofile = flag.String("cpuprofile", "", "write cpu profile `file`")
 var ip = flag.String("ip", "127.0.0.1", "IP to connect to")
 var port = flag.String("port", "42424", "Port to connect to/listen on")
 var mode = flag.String("mode", "client", "server|client|sender|receiver")
-var cpuprofile = flag.String("cpuprofile", "", "write cpu profile `file`")
 var runtime = flag.Duration("t", time.Duration(180)*time.Second, "runtime as duration")
+var initLogLevel = flag.String("log", "info", "logrus log level: (info | warn | debug | error | fatal | panic)")
+
 var numVirtualFlows = flag.Int("numFlows", 1, "number of virtual flows")
 var estBandwidth = flag.Float64("estBandwidth", 24e6, "estimated bandwidth")
 var pulseSize = flag.Float64("pulseSize", 0.5, "size of pulses to send as fraction of rate")
 var initUseSwitching = flag.Bool("useSwitching", true, "if false, do not pulse, always stay in delay mode")
 var initReportInterval = flag.Duration("reportInterval", time.Duration(2)*time.Second, "how often to report throughput and delay, duration")
-
 var initDelayThreshold = flag.Float64("delayThreshold", 1.25, "use delay threshold of min_rtt * X")
-var initLogLevel = flag.String("log", "info", "logrus log level: (info | warn | debug | error | fatal | panic)")
 
 // TODO make a slow start-like startup
 var initRate = flag.Float64("initRate", 10e6, "initial sending rate")
+var measurementTimescale = flag.Int64("measurementTimescale", 1, "over how many rtts to measure rin, rout, zt, elasticity")
+var measurementInterval = flag.Duration("measurementInterval", time.Duration(10)*time.Millisecond, "how often to measure rin, rout, zt, elasticity")
 
 // overall statistics
 var done chan interface{}
@@ -64,16 +66,18 @@ func main() {
 	}
 
 	log.WithFields(log.Fields{
-		"ip":              *ip,
-		"port":            *port,
-		"switching":       *initUseSwitching,
-		"interval":        *initReportInterval,
-		"delay_threshold": *initDelayThreshold,
-		"log":             *initLogLevel,
-		"num_flows":       *numVirtualFlows,
-		"runtime":         *runtime,
-		"est_bandwidth":   *estBandwidth,
-		"pulse_size":      *pulseSize,
+		"log":              *initLogLevel,
+		"ip":               *ip,
+		"port":             *port,
+		"runtime":          *runtime,
+		"switching":        *initUseSwitching,
+		"interval":         *initReportInterval,
+		"delayThreshold":   *initDelayThreshold,
+		"numFlows":         *numVirtualFlows,
+		"est_bandwidth":    *estBandwidth,
+		"pulseSize":        *pulseSize,
+		"measureTimescale": *measurementTimescale,
+		"measureInterval":  *measurementInterval,
 	}).Info("Starting ", *mode)
 
 	//print on ctrl-c
