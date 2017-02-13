@@ -284,11 +284,12 @@ func changePulses(fr float64, rtt time.Duration) float64 {
 		if rtt > min_rtt+maxQd/2 {
 			pulseMode = UP_PULSE
 			pulseSwitchTime = time.Now()
+			return fr * (1 + *pulseSize)
 		} else {
 			pulseMode = DOWN_PULSE
 			pulseSwitchTime = time.Now()
+			return fr * (1 - *pulseSize)
 		}
-		return fr
 	case UP_PULSE:
 		if numPulses == 0 {
 			pulseMode = PULSE_WAIT
