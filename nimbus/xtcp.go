@@ -72,7 +72,7 @@ func (xt *xtcpDataContainer) getNextSeqLottery() (seq uint32, vfid uint16) {
 	seq, vfid = xt.seq_nos[xt.currVirtFlow], xt.currVirtFlow
 	xt.seq_nos[vfid]++
 
-	sum := 0.0
+	sum := 1.0
 	for _, cwnd := range xt.virtual_cwnds {
 		sum += cwnd
 	}
