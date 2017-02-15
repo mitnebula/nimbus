@@ -21,7 +21,7 @@ def makeDelayPlot(name, tr, figInd):
     fig1 = plt.figure(figInd)
     plt.xlabel('Time (s)')
     plt.ylabel('RTT (s)')
-    vlines(plt, sw)
+    #vlines(plt, sw)
     plt.title(name)
     plt.plot(t, xt, label='RTT')
 
@@ -30,9 +30,13 @@ def makeDelayPlot(name, tr, figInd):
     fig2 = plt.figure(figInd)
     plt.xlabel('Time (s)')
     plt.ylabel('yt (s)')
-    vlines(plt, sw)
+    #vlines(plt, sw)
     plt.title(name)
     plt.plot(t, ytShift, label='y(t) shift')
+
+    figInd += 1
+
+    return figInd
 
 if __name__ == '__main__':
     tr = list(readTrace(sys.argv[1]))

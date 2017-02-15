@@ -21,7 +21,7 @@ def makeRatesPlot(name, tr, figInd):
     fig1 = plt.figure(figInd)
     plt.xlabel('Time (s)')
     plt.ylabel('Cross Traffic (Mbps)')
-    vlines(plt, sw)
+    #vlines(plt, sw)
     plt.title(name)
     plt.plot(t, zt, label='Cross Traffic')
 
@@ -30,11 +30,13 @@ def makeRatesPlot(name, tr, figInd):
     fig2 = plt.figure(figInd)
     plt.xlabel('Time (s)')
     plt.ylabel('Rate (Mbps)')
-    vlines(plt, sw)
+    #vlines(plt, sw)
     plt.title(name)
     plt.plot(t, rin, label='rin')
     plt.plot(t, rout, label='rout')
     plt.legend()
+
+    figInd += 1
 
     return figInd
 
