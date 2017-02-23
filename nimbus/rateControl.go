@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	log "github.com/Sirupsen/logrus"
 	"math"
 	"time"
@@ -11,14 +10,6 @@ import (
 
 const (
 	alpha = 0.8
-)
-
-type PulseMode int
-
-const (
-	UP_PULSE PulseMode = iota
-	DOWN_PULSE
-	PULSE_WAIT
 )
 
 var est_bandwidth float64
@@ -34,9 +25,6 @@ var xt_history *history.History
 var modeSwitchTime time.Time
 
 // test state
-var pulseMode PulseMode
-var pulseSwitchTime time.Time
-
 var maxQd time.Duration
 
 var untilNextUpdate time.Duration
@@ -55,9 +43,7 @@ func init() {
 	// TODO tracking
 	maxQd = min_rtt
 
-	pulseSwitchTime = time.Now()
 	modeSwitchTime = time.Now()
-	pulseMode = PULSE_WAIT
 }
 
 func switchToDelay(rtt time.Duration) {
@@ -73,7 +59,6 @@ func switchToDelay(rtt time.Duration) {
 
 	flowMode = DELAY
 	currMode = "DELAY"
-	pulseMode = PULSE_WAIT
 	modeSwitchTime = time.Now()
 }
 
@@ -90,7 +75,6 @@ func switchToXtcp(rtt time.Duration) {
 
 	flowMode = XTCP
 	currMode = "XTCP"
-	pulseMode = PULSE_WAIT
 	xtcpData.setXtcpCwnd(flowRate, rtt)
 	modeSwitchTime = time.Now()
 }
@@ -175,35 +159,9 @@ func measure(interval time.Duration) (
 	return
 }
 
-func changePulses(fr float64, rtt time.Duration) float64 {
-	if time.Since(pulseSwitchTime) < min_rtt {
-		return fr
-	}
-
-	switch pulseMode {
-	case PULSE_WAIT:
-		if rtt > min_rtt+maxQd/2 {
-			pulseMode = UP_PULSE
-			pulseSwitchTime = time.Now()
-			return fr * (1 + *pulseSize)
-		} else {
-			pulseMode = DOWN_PULSE
-			pulseSwitchTime = time.Now()
-			return fr * (1 - *pulseSize)
-		}
-	case UP_PULSE:
-		pulseMode = DOWN_PULSE
-		pulseSwitchTime = time.Now()
-		return fr * (1 - *pulseSize) / (1 + *pulseSize)
-	case DOWN_PULSE:
-		pulseMode = UP_PULSE
-		pulseSwitchTime = time.Now()
-		return fr * (1 + *pulseSize) / (1 - *pulseSize)
-	default:
-		err := fmt.Errorf("unknown pulse mode: %v", pulseMode)
-		log.Panic(err)
-		return -1
-	}
+func changePulses(fr float64) float64 {
+	elapsed := time.Since(startTime).Seconds()
+	return fr + (*pulseSize)*fr*math.Sin((1/(2*min_rtt.Seconds()))*2*math.Pi*elapsed)
 }
 
 func shouldSwitch(rtt time.Duration) {
@@ -236,7 +194,7 @@ func doUpdate() {
 		flowRate = xtcpData.updateRateXtcp(rtt)
 	}
 
-	flowRate = changePulses(flowRate, rtt)
+	flowRate = changePulses(flowRate)
 
 	if flowRate < 0 {
 		log.Panic("negative flow rate")
