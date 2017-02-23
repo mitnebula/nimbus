@@ -36,7 +36,6 @@ var modeSwitchTime time.Time
 // test state
 var pulseMode PulseMode
 var pulseSwitchTime time.Time
-var numPulses = 0
 
 var maxQd time.Duration
 
@@ -183,7 +182,6 @@ func changePulses(fr float64, rtt time.Duration) float64 {
 
 	switch pulseMode {
 	case PULSE_WAIT:
-		numPulses = 1
 		if rtt > min_rtt+maxQd/2 {
 			pulseMode = UP_PULSE
 			pulseSwitchTime = time.Now()
@@ -194,27 +192,13 @@ func changePulses(fr float64, rtt time.Duration) float64 {
 			return fr * (1 - *pulseSize)
 		}
 	case UP_PULSE:
-		if numPulses == 0 {
-			pulseMode = PULSE_WAIT
-			pulseSwitchTime = time.Now()
-			return fr / (1 + *pulseSize)
-		} else {
-			numPulses--
-			pulseMode = DOWN_PULSE
-			pulseSwitchTime = time.Now()
-			return fr * (1 - *pulseSize) / (1 + *pulseSize)
-		}
+		pulseMode = DOWN_PULSE
+		pulseSwitchTime = time.Now()
+		return fr * (1 - *pulseSize) / (1 + *pulseSize)
 	case DOWN_PULSE:
-		if numPulses == 0 {
-			pulseMode = PULSE_WAIT
-			pulseSwitchTime = time.Now()
-			return fr / (1 - *pulseSize)
-		} else {
-			numPulses--
-			pulseMode = UP_PULSE
-			pulseSwitchTime = time.Now()
-			return fr * (1 + *pulseSize) / (1 - *pulseSize)
-		}
+		pulseMode = UP_PULSE
+		pulseSwitchTime = time.Now()
+		return fr * (1 + *pulseSize) / (1 - *pulseSize)
 	default:
 		err := fmt.Errorf("unknown pulse mode: %v", pulseMode)
 		log.Panic(err)
