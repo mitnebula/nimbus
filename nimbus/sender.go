@@ -36,9 +36,6 @@ const (
 var flowMode Mode
 
 func init() {
-	flowMode = DELAY
-	currMode = "DELAY"
-
 	flowRate = 0
 	min_rtt = time.Duration(999) * time.Hour
 

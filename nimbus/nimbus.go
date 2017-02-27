@@ -22,6 +22,7 @@ var numVirtualFlows = flag.Int("numFlows", 1, "number of virtual flows")
 var estBandwidth = flag.Float64("estBandwidth", 24e6, "estimated bandwidth")
 var pulseSize = flag.Float64("pulseSize", 0.5, "size of pulses to send as fraction of rate")
 var initUseSwitching = flag.Bool("useSwitching", true, "if false, do not pulse, always stay in delay mode")
+var initMode = flag.String("initMode", "DELAY", "mode to start in: (DELAY | XTCP)")
 var initReportInterval = flag.Duration("reportInterval", time.Duration(2)*time.Second, "how often to report throughput and delay, duration")
 var initDelayThreshold = flag.Float64("delayThreshold", 1.25, "use delay threshold of min_rtt * X")
 
@@ -71,6 +72,7 @@ func main() {
 		"port":             *port,
 		"runtime":          *runtime,
 		"switching":        *initUseSwitching,
+		"initMode":         *initMode,
 		"interval":         *initReportInterval,
 		"delayThreshold":   *initDelayThreshold,
 		"numFlows":         *numVirtualFlows,
@@ -85,6 +87,16 @@ func main() {
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 	go exitStats(interrupt)
+
+	currMode = *initMode
+	switch *initMode {
+	case "DELAY":
+		flowMode = DELAY
+	case "XTCP":
+		flowMode = XTCP
+	default:
+		log.Panicf("Unknown initial modea %s!", *initMode)
+	}
 
 	est_bandwidth = *estBandwidth
 	flowRate = *initRate
