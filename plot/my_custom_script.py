@@ -40,18 +40,16 @@ def main():
 	#subprocess.Popen(command)
 	X = pl.loadtxt('temp.tr')
 	time = X[:,0:1]
-	Z = X[:,3:4]
+	Z = X[:,2:3]
 	rtt = X[:,1:2]
-	yt = X[:,2:3]
-	rout =X[:,4:5]
+	rout =X[:,3:4]
 	start=0.0
 	Z2 = []
 	time2 = []
 	rtt2 = []
-	yt2 = []
 	rout2 = []
 	i=0
-
+	T=0.01
 	while i<len(time):
 		while i<len(time) and time[i]<start:
 			i+=1
@@ -60,25 +58,20 @@ def main():
 			break
 		Z2.append(Z[i])
 		rtt2.append(rtt[i])
-		yt2.append(1-yt[i])
 		time2.append(start)
 		rout2.append(rout[i])
-		start+=0.005
+		start+=T
 		#print start, yt[i]
 
 	x = []
 	y = []
-	for i in range(8):
-		x.append(5*(i+1))
-		y.append(pearson_def(yt2[2000:2000+200*x[i]],Z2[2000:2000+200*x[i]]))#[2000+int(rtt2[2000]*200):2000+200*x[i]+int(rtt2[2000]*200)]))
 	for i in range(len(Z2)):
 		#if i<2000 or i>8000:
 			#continue
 		#x.append(i/200.0)
 		#y.append(pearson_def(yt2[i:i+1000],Z2[i+int(rtt2[i]*200):i+1000+int(rtt2[i]*200)]))
-		if i==4000:
-			N=1000
-			T=0.005
+		if i==int(int(sys.argv[1])/T):
+			N=int(int(sys.argv[2])/T)
 			rout3=np.linspace(0.0, N*T, N)
 			Z3=np.linspace(0.0, N*T, N)
 			for j in range(N):
@@ -119,11 +112,12 @@ def main():
 	plt.ylabel('Z(t)')
 	plt.title('Z(t) vs Time')
 	plt.plot(time,Z)
+
 	plt.figure()
 	plt.xlabel('Time (s)')
-	plt.ylabel('1-y(t)')
-	plt.title('1-y(t) vs Time')
-	plt.plot(time2,yt2)
+	plt.ylabel('Rtt')
+	plt.title('Rtt vs Time')
+	plt.plot(time2,rtt2)
 	'''plt.figure()
 	plt.title('Pearson Correlation Coeff with window size')
 	plt.xlabel('Window (sec)')

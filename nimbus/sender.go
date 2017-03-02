@@ -147,6 +147,7 @@ func rttUpdater(rtt_history chan int64) {
 			ackTimes.UpdateDuration(rtt * 100)
 			zt_history.UpdateDuration(rtt * 100)
 			xt_history.UpdateDuration(rtt * 100)
+			zout_history.UpdateDuration(rtt * 100)
 
 			maxQd = min_rtt
 		}
