@@ -53,10 +53,12 @@ func switchToDelay(rtt time.Duration) {
 		return
 	}
 
+	delayThreshold = max(*initDelayThreshold, rtt.Seconds()/min_rtt.Seconds())
 	log.WithFields(log.Fields{
 		"elapsed": time.Since(startTime),
 		"from":    currMode,
-		"to":      "DELAY",
+		"to":      "DELAY ",
+		"DelayTheshold":  delayThreshold,
 	}).Info("switched mode")
 
 	flowMode = DELAY
@@ -72,7 +74,7 @@ func switchToXtcp(rtt time.Duration) {
 	log.WithFields(log.Fields{
 		"elapsed": time.Since(startTime),
 		"from":    currMode,
-		"to":      "XTCP",
+		"to":      "XTCP ",
 	}).Info("switched mode")
 
 	flowMode = XTCP
@@ -96,6 +98,12 @@ func updateRateDelay(
 	if newRate < minRate || math.IsNaN(newRate) {
 		newRate = minRate
 	}
+	
+	//gradually bringdown target delay, 2% everymin_rtt
+	if delayThreshold>*initDelayThreshold{
+		delayThreshold -= (measurementInterval.Seconds()/min_rtt.Seconds())*0.02
+	}
+
 
 	return newRate
 }
@@ -118,6 +126,9 @@ func measure(interval time.Duration) (
 		interval,
 	)
 	if err != nil {
+		if time.Since(startTime) > 15*time.Second {
+			log.Panic("Throughput from Times rout")
+		}		
 		return
 	}
 
@@ -127,11 +138,17 @@ func measure(interval time.Duration) (
 
 	t1, t2, err := PacketTimes(sendTimes, oldPkt, newPkt)
 	if err != nil {
+		if time.Since(startTime) > 15*time.Second {
+			log.Panic("Packet Times")
+		}		
 		return
 	}
 
 	rin, _, _, err = ThroughputFromTimes(sendTimes, t1, t1.Sub(t2))
 	if err != nil {
+		if time.Since(startTime) > 15*time.Second {
+			log.Panic("Throughput from Times rin")
+		}		
 		return
 	}
 
@@ -142,9 +159,9 @@ func measure(interval time.Duration) (
 		zt = est_bandwidth
 	}
 
-	if zt > 0 {
+	//if zt > 0 {
 		zt_history.Add(time.Now(), zt)
-	}
+	//}
 	xt_history.Add(time.Now(), rtt)
 	zout_history.Add(time.Now(), est_bandwidth-rout)	
 
@@ -161,7 +178,12 @@ func measure(interval time.Duration) (
 
 func changePulses(fr float64) float64 {
 	elapsed := time.Since(startTime).Seconds()
-	return fr + (*pulseSize)*fr*math.Sin((1/(2*min_rtt.Seconds()))*2*math.Pi*elapsed)
+	
+	// Increase the pulse size if flow rate is small
+	fr_modified := fr	
+	
+
+	return fr + (*pulseSize)*fr_modified*math.Sin((1/(2*min_rtt.Seconds()))*2*math.Pi*elapsed)
 }
 
 func shouldSwitch (rtt time.Duration){
@@ -176,7 +198,7 @@ func shouldSwitch (rtt time.Duration){
 	// gather history and correct for phase shifts
 
  	duration_of_fft := 5.0
-	thresh := 0.5
+	thresh := 0.7
 	end_time_snapshot := time.Now()
 	start_time_snapshot := time.Now().Add(-time.Duration(duration_of_fft+1)*time.Second)
 	
@@ -207,14 +229,13 @@ func shouldSwitch (rtt time.Duration){
 	for i := 0; i<N/2; i++ {
 		freq = append(freq, float64(i)*(1.0/(float64(N)*T)))
 	}
-	
-	zout_peak := findPeak(2.0, 10.0, freq, fft_zout)  
-	zt_peak := findPeak(2.0, 10.0, freq, fft_zt)
-	
 
-	// These conditions depend on where we want out peak to be
-	if 4.5<freq[zout_peak] && freq[zout_peak]<5.5 {
-	 	if 4.5<freq[zt_peak] && freq[zt_peak]<5.5 {
+	expected_peak := 1.0/(2.0*min_rtt.Seconds())
+	zout_peak := findPeak(0.4*expected_peak, 2.0*expected_peak, freq, fft_zout)  
+	zt_peak := findPeak(0.4*expected_peak, 2.0*expected_peak, freq, fft_zt)	
+
+	if expected_peak-0.5<freq[zout_peak] && freq[zout_peak]<expected_peak+0.5 {
+	 	if expected_peak-0.5<freq[zt_peak] && freq[zt_peak]<expected_peak+0.5 {
 			if cmplx.Abs(fft_zt[zt_peak])>thresh*cmplx.Abs(fft_zout[zout_peak]) {
 				switchToXtcp(rtt)
 			} else if  cmplx.Abs(fft_zt[zt_peak])<0.6*thresh*cmplx.Abs(fft_zout[zout_peak]) {
@@ -231,6 +252,7 @@ func shouldSwitch (rtt time.Duration){
 		"ZtPeak":      freq[zt_peak],
 		"ZoutPeakVal":      cmplx.Abs(fft_zout[zout_peak]),
 		"ZtPeakVal":     cmplx.Abs(fft_zt[zt_peak]),
+		"Expected Peak":   expected_peak,
 	}).Debug()	
 
 	return
@@ -263,6 +285,14 @@ func detrend(a []float64) {
 	mean_val := mean(a)
 	for i:=0;i<len(a);i++ {
 		a[i]-=mean_val
+	}
+}
+
+func max(a, b float64) float64{
+	if a > b {
+		return a 
+	} else {
+		return b
 	}
 }
 
