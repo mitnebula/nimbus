@@ -57,7 +57,7 @@ func switchToDelay(rtt time.Duration) {
 	log.WithFields(log.Fields{
 		"elapsed": time.Since(startTime),
 		"from":    currMode,
-		"to":      "DELAY ",
+		"to":      "DELAY",
 		"DelayTheshold":  delayThreshold,
 	}).Info("switched mode")
 
@@ -74,7 +74,7 @@ func switchToXtcp(rtt time.Duration) {
 	log.WithFields(log.Fields{
 		"elapsed": time.Since(startTime),
 		"from":    currMode,
-		"to":      "XTCP ",
+		"to":      "XTCP",
 	}).Info("switched mode")
 
 	flowMode = XTCP
@@ -101,7 +101,7 @@ func updateRateDelay(
 	
 	//gradually bringdown target delay, 2% everymin_rtt
 	if delayThreshold>*initDelayThreshold{
-		delayThreshold -= (measurementInterval.Seconds()/min_rtt.Seconds())*0.02
+		delayThreshold -= (measurementInterval.Seconds()/0.1)*0.01
 	}
 
 
@@ -179,16 +179,20 @@ func measure(interval time.Duration) (
 func changePulses(fr float64) float64 {
 	elapsed := time.Since(startTime).Seconds()
 	
-	// Increase the pulse size if flow rate is small
-	fr_modified := fr	
-	
+	// pluse time is 200ms
+	fr_modified := est_bandwidth	
+	phase := 1/(0.2)*elapsed
+	phase -= math.Floor(phase)	
 
-	return fr + (*pulseSize)*fr_modified*math.Sin((1/(2*min_rtt.Seconds()))*2*math.Pi*elapsed)
+	if phase<0.25 {
+		return fr + (*pulseSize)*fr_modified*math.Sin(2*math.Pi*phase*2)
+	} else {
+		return max(0.05*est_bandwidth, fr + 0.3333*(*pulseSize)*fr_modified*math.Sin(2*math.Pi*(0.5 + (phase-0.25)*0.666666)))
+	}
+
 }
 
 func shouldSwitch (rtt time.Duration){
-	// not implemented
-	// TODO FFT-based switching logic
 	
 	//Too short a duration don't switch 
 	if time.Since(startTime) < 15*time.Second {
@@ -198,7 +202,7 @@ func shouldSwitch (rtt time.Duration){
 	// gather history and correct for phase shifts
 
  	duration_of_fft := 5.0
-	thresh := 0.7
+	thresh := 0.5
 	end_time_snapshot := time.Now()
 	start_time_snapshot := time.Now().Add(-time.Duration(duration_of_fft+1)*time.Second)
 	
@@ -212,6 +216,7 @@ func shouldSwitch (rtt time.Duration){
 	T := 0.01
 	N := int(duration_of_fft/T)
 	
+
 	for i := 0; i<N; i++ {
 		clean_zt = append(clean_zt, raw_zt[i+int(raw_rtt[i].Item.(time.Duration).Seconds()/T)].Item.(float64))
 		clean_zout = append(clean_zout, raw_zout[i].Item.(float64))
@@ -230,9 +235,10 @@ func shouldSwitch (rtt time.Duration){
 		freq = append(freq, float64(i)*(1.0/(float64(N)*T)))
 	}
 
-	expected_peak := 1.0/(2.0*min_rtt.Seconds())
-	zout_peak := findPeak(0.4*expected_peak, 2.0*expected_peak, freq, fft_zout)  
-	zt_peak := findPeak(0.4*expected_peak, 2.0*expected_peak, freq, fft_zt)	
+	//Pluse Size is fixed to 200ms
+	expected_peak := 1.0/(0.2)
+	zout_peak := findPeak(0.8*expected_peak, 1.6*expected_peak, freq, fft_zout)  
+	zt_peak := findPeak(0.8*expected_peak, 1.6*expected_peak, freq, fft_zt)	
 
 	if expected_peak-0.5<freq[zout_peak] && freq[zout_peak]<expected_peak+0.5 {
 	 	if expected_peak-0.5<freq[zt_peak] && freq[zt_peak]<expected_peak+0.5 {
@@ -297,7 +303,10 @@ func max(a, b float64) float64{
 }
 
 func doUpdate() {
-	rin, _, zt, rtt, err := measure(time.Duration(*measurementTimescale*min_rtt.Nanoseconds()) * time.Nanosecond)
+	
+	//Duration measurement is fixed to 100ms
+
+	rin, _, zt, rtt, err := measure(time.Duration(*measurementTimescale*100*1000000/*"min_rtt.Nanoseconds()*/) * time.Nanosecond)
 	if err != nil {
 		return
 	}

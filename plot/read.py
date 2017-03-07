@@ -13,8 +13,7 @@ def readLine(line):
     matches = re.findall(r'(.+?)=("(.+?)"|(.+?)) ', line)
     for m in matches:
         k, v = parseField(m)
-        res[k] = v
-
+        res[k] = v   
     return res
 
 def parseField(match):

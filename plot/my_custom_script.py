@@ -70,8 +70,8 @@ def main():
 			#continue
 		#x.append(i/200.0)
 		#y.append(pearson_def(yt2[i:i+1000],Z2[i+int(rtt2[i]*200):i+1000+int(rtt2[i]*200)]))
-		if i==int(int(sys.argv[1])/T):
-			N=int(int(sys.argv[2])/T)
+		if i==int(float(sys.argv[1])/T):
+			N=int(float(sys.argv[2])/T)
 			rout3=np.linspace(0.0, N*T, N)
 			Z3=np.linspace(0.0, N*T, N)
 			for j in range(N):
