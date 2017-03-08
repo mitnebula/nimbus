@@ -3,7 +3,7 @@
 import subprocess
 
 def runExp(name, bw, rtt, bufSizeBDPs, pulseSize, crossTrafficPattern, sendRate, measureTimescale):
-    subprocess.call("go install nimbus", shell=True)
+    subprocess.call("go install github.mit.edu/hari/nimbus-cc/nimbus", shell=True)
 
     killAll()
 

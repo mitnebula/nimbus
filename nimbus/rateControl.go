@@ -101,7 +101,7 @@ func updateRateDelay(
 	
 	//gradually bringdown target delay, 2% everymin_rtt
 	if delayThreshold>*initDelayThreshold{
-		delayThreshold -= (measurementInterval.Seconds()/0.1)*0.01
+		delayThreshold -= (measurementInterval.Seconds()/0.1)*0.02
 	}
 
 
@@ -125,10 +125,7 @@ func measure(interval time.Duration) (
 		time.Now(),
 		interval,
 	)
-	if err != nil {
-		if time.Since(startTime) > 15*time.Second {
-			log.Panic("Throughput from Times rout")
-		}		
+	if err != nil {		
 		return
 	}
 
@@ -137,18 +134,12 @@ func measure(interval time.Duration) (
 	}
 
 	t1, t2, err := PacketTimes(sendTimes, oldPkt, newPkt)
-	if err != nil {
-		if time.Since(startTime) > 15*time.Second {
-			log.Panic("Packet Times")
-		}		
+	if err != nil {		
 		return
 	}
 
 	rin, _, _, err = ThroughputFromTimes(sendTimes, t1, t1.Sub(t2))
-	if err != nil {
-		if time.Since(startTime) > 15*time.Second {
-			log.Panic("Throughput from Times rin")
-		}		
+	if err != nil {		
 		return
 	}
 
@@ -179,32 +170,37 @@ func measure(interval time.Duration) (
 func changePulses(fr float64) float64 {
 	elapsed := time.Since(startTime).Seconds()
 	
-	// pluse time is 200ms
-	fr_modified := est_bandwidth	
-	phase := 1/(0.2)*elapsed
-	phase -= math.Floor(phase)	
+	fr_modified := est_bandwidth
 
-	if phase<0.25 {
-		return fr + (*pulseSize)*fr_modified*math.Sin(2*math.Pi*phase*2)
+	measurementWindow := (4.8e6/est_bandwidth)	
+	phase := elapsed/(2*measurementWindow)
+	phase -= math.Floor(phase)	
+	upRatio := 0.25
+	if phase<upRatio {
+		return fr + (*pulseSize)*fr_modified*math.Sin(2*math.Pi*phase*(0.5/upRatio))
 	} else {
-		return max(0.05*est_bandwidth, fr + 0.3333*(*pulseSize)*fr_modified*math.Sin(2*math.Pi*(0.5 + (phase-0.25)*0.666666)))
+		return max(0.05*est_bandwidth, fr + (upRatio/(1.0-upRatio))*(*pulseSize)*fr_modified*math.Sin(2*math.Pi*(0.5 + (phase-upRatio)*(0.5/(1.0-upRatio)))))
 	}
 
 }
 
 func shouldSwitch (rtt time.Duration){
 	
-	//Too short a duration don't switch 
-	if time.Since(startTime) < 15*time.Second {
-	return
-	}
 
 	// gather history and correct for phase shifts
 
- 	duration_of_fft := 5.0
+	measurementWindow := (4.8e6/est_bandwidth)
+
+ 	duration_of_fft := 50*measurementWindow
+	
+	//Too short a duration don't switch 
+	if time.Since(startTime) < time.Duration(10.0 + 1.0*duration_of_fft)*time.Second {
+	return
+	}
+		
 	thresh := 0.5
 	end_time_snapshot := time.Now()
-	start_time_snapshot := time.Now().Add(-time.Duration(duration_of_fft+1)*time.Second)
+	start_time_snapshot := time.Now().Add(-time.Duration(duration_of_fft+1.0)*time.Second)
 	
 	raw_zt, _ := zt_history.ItemsBetween(start_time_snapshot, end_time_snapshot)  
 	raw_rtt, _ := xt_history.ItemsBetween(start_time_snapshot, end_time_snapshot)
@@ -213,15 +209,23 @@ func shouldSwitch (rtt time.Duration){
 	clean_zt := []float64{}
 	clean_zout := []float64{}
 	
-	T := 0.01
+	T := measurementInterval.Seconds()
 	N := int(duration_of_fft/T)
 	
 
+
 	for i := 0; i<N; i++ {
-		clean_zt = append(clean_zt, raw_zt[i+int(raw_rtt[i].Item.(time.Duration).Seconds()/T)].Item.(float64))
+		if i>=len(raw_rtt) {
+			return
+		}
+		j := i+int(raw_rtt[i].Item.(time.Duration).Seconds()/T)
+		if j>=len(raw_zt) {
+			return
+		}
+		clean_zt = append(clean_zt, raw_zt[j].Item.(float64))
 		clean_zout = append(clean_zout, raw_zout[i].Item.(float64))
 	}
-	// TODO add hanning and detrending for FFTs 
+	// TODO add hanning and maybe detrending for FFTs 
 	
 	detrend(clean_zt)	
 	detrend(clean_zout)	
@@ -235,8 +239,8 @@ func shouldSwitch (rtt time.Duration){
 		freq = append(freq, float64(i)*(1.0/(float64(N)*T)))
 	}
 
-	//Pluse Size is fixed to 200ms
-	expected_peak := 1.0/(0.2)
+	//Pluse Size is fixed to 2*measurementWindow
+	expected_peak := 1.0/(2*measurementWindow)
 	zout_peak := findPeak(0.8*expected_peak, 1.6*expected_peak, freq, fft_zout)  
 	zt_peak := findPeak(0.8*expected_peak, 1.6*expected_peak, freq, fft_zt)	
 
@@ -304,9 +308,11 @@ func max(a, b float64) float64{
 
 func doUpdate() {
 	
-	//Duration measurement is fixed to 100ms
 
-	rin, _, zt, rtt, err := measure(time.Duration(*measurementTimescale*100*1000000/*"min_rtt.Nanoseconds()*/) * time.Nanosecond)
+	//TODO: measurement window shouldn't be less than RTT
+	measurementWindow := int64(1.0e9 * (4.8e6/est_bandwidth))
+
+	rin, _, zt, rtt, err := measure(time.Duration(*measurementTimescale*measurementWindow) * time.Nanosecond)
 	if err != nil {
 		return
 	}
@@ -337,6 +343,7 @@ func doUpdate() {
 }
 
 func flowRateUpdater() {
+	//TODO: measurement interval should kind of depend on duration of FFT
 	for _ = range time.Tick(*measurementInterval) {
 		doUpdate()
 

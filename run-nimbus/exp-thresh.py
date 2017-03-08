@@ -4,14 +4,14 @@ import subprocess
 from exp import runExp
 
 name = 't10'
-bw = 24
-buf = [2]
+bw = 48
+buf = [1, 2]
 
-pulseSizes = [0.5]#, 0.5, 0.75]
-rtts = [100]
-initRates = [12]#, 12, 20]
+pulseSizes = [0.25]#, 0.5, 0.75]
+rtts = [50, 100]
+initRates = [24]#, 12, 20]
 measures = [1]
-crossTraffic = ['tcp', 'poisson', 'cbr']
+crossTraffic = ['tcp', 'poisson', 'tcppoisson']
 
 def run(r, p, c, i, m, b):
     runExp(name, bw, r, b, p, c, i, m)
