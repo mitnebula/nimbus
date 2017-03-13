@@ -175,7 +175,7 @@ func changePulses(fr float64) float64 {
 	measurementWindow := (4.8e6/est_bandwidth)	
 	phase := elapsed/(2*measurementWindow)
 	phase -= math.Floor(phase)	
-	upRatio := 0.25
+	upRatio := (min_rtt.Seconds())/(2*measurementWindow)
 	if phase<upRatio {
 		return fr + (*pulseSize)*fr_modified*math.Sin(2*math.Pi*phase*(0.5/upRatio))
 	} else {
@@ -287,9 +287,9 @@ func shouldSwitch (rtt time.Duration){
 	 	if expected_peak-0.5<freq[zt_peak] && freq[zt_peak]<expected_peak+0.5 {
 			if cmplx.Abs(fft_zt[zt_peak])>thresh*cmplx.Abs(fft_zout[zout_peak]) {
 				switchToXtcp(rtt)
-			}// else if  cmplx.Abs(fft_zt[zt_peak])<0.75*thresh*cmplx.Abs(fft_zout[zout_peak]) {
-			//	switchToDelay(rtt)			
-			//}
+			} else if  cmplx.Abs(fft_zt[zt_peak])<0.5*thresh*cmplx.Abs(fft_zout[zout_peak]) {
+				switchToDelay(rtt)			
+			}
 		} else {
 			switchToDelay(rtt)		
 		}
