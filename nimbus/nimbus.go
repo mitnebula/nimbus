@@ -63,6 +63,9 @@ func main() {
 		if err := pprof.StartCPUProfile(f); err != nil {
 			log.Error("could not start CPU profile: ", err)
 		}
+		log.WithFields(log.Fields{
+			"Starting Profiling, Profile File":              *cpuprofile,
+		}).Info("Starting ", *mode)
 		defer pprof.StopCPUProfile()
 	}
 
@@ -155,6 +158,6 @@ func doExit() {
 	}).Info("Receive statistics")
 	log.Info(elapsed, " elapsed")
 	done <- struct{}{}
-	os.Exit(0)
+	//os.Exit(0)
 
 }

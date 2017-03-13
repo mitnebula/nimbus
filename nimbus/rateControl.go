@@ -206,14 +206,41 @@ func shouldSwitch (rtt time.Duration){
 	raw_rtt, _ := xt_history.ItemsBetween(start_time_snapshot, end_time_snapshot)
 	raw_zout, _ := zout_history.ItemsBetween(start_time_snapshot, end_time_snapshot)
 	
+	
+
+
 	clean_zt := []float64{}
 	clean_zout := []float64{}
-	
+	//N must be a power of 2
 	T := measurementInterval.Seconds()
 	N := int(duration_of_fft/T)
-	
+	for i:=1 ; ;i*=2 {
+		if i>=N {
+			N=i
+			break
+		}
+	}
+
+	//correct for missing entries
+	start := start_time_snapshot
+	/*corrected_rtt := make([]history.HistoryItemWithTime, 0)
+	corrected_zt := make([]history.HistoryItemWithTime, 0)
+	corrected_zout := make([]history.HistoryItemWithTime, 0)
+	for j:=0; j<len(raw_zt); {
+		for ;j<len(raw_zt) && raw_zt[j].Time.Before(start); {
+			j += 1 
+		}
+		if j>=len(raw_zt) {
+			break
+		}
+		corrected_rtt = append(corrected_rtt, raw_rtt[j])
+		corrected_zt = append(corrected_zt, raw_zt[j])
+		corrected_zout = append(corrected_zout, raw_zout[j])
+		start = start.Add(*measurementInterval)
+	}*/
 
 
+	//Correct got Phase Shifts
 	for i := 0; i<N; i++ {
 		if i>=len(raw_rtt) {
 			return
@@ -225,14 +252,26 @@ func shouldSwitch (rtt time.Duration){
 		clean_zt = append(clean_zt, raw_zt[j].Item.(float64))
 		clean_zout = append(clean_zout, raw_zout[i].Item.(float64))
 	}
-	// TODO add hanning and maybe detrending for FFTs 
+
+	if mean(clean_zt)<0.3*est_bandwidth {
+		switchToDelay(rtt)
+		return
+	}
+
+	// TODO add hanning
 	
 	detrend(clean_zt)	
 	detrend(clean_zout)	
-		
+	start = time.Now()	
 	fft_zt := fft.FFTReal(clean_zt)
 	fft_zout := fft.FFTReal(clean_zout)
-
+	end := time.Now()	
+	if end.Sub(start) > 5*time.Millisecond {
+		log.WithFields(log.Fields{
+			"elapsed":  time.Since(startTime),
+			"FFT Time": end.Sub(start).Seconds(),
+		}).Debug()
+	}
  
 	freq := []float64{}	
 	for i := 0; i<N/2; i++ {
@@ -248,9 +287,9 @@ func shouldSwitch (rtt time.Duration){
 	 	if expected_peak-0.5<freq[zt_peak] && freq[zt_peak]<expected_peak+0.5 {
 			if cmplx.Abs(fft_zt[zt_peak])>thresh*cmplx.Abs(fft_zout[zout_peak]) {
 				switchToXtcp(rtt)
-			} else if  cmplx.Abs(fft_zt[zt_peak])<0.6*thresh*cmplx.Abs(fft_zout[zout_peak]) {
-				switchToDelay(rtt)			
-			}
+			}// else if  cmplx.Abs(fft_zt[zt_peak])<0.75*thresh*cmplx.Abs(fft_zout[zout_peak]) {
+			//	switchToDelay(rtt)			
+			//}
 		} else {
 			switchToDelay(rtt)		
 		}
@@ -314,10 +353,22 @@ func doUpdate() {
 
 	rin, _, zt, rtt, err := measure(time.Duration(*measurementTimescale*measurementWindow) * time.Nanosecond)
 	if err != nil {
+		log.WithFields(log.Fields{
+			"elapsed":  time.Since(startTime),
+			"error":    err,
+			}).Debug()
 		return
 	}
-
+	start := time.Now()
 	shouldSwitch(rtt)
+	end := time.Now()
+
+	if end.Sub(start) > 5*time.Millisecond {
+		log.WithFields(log.Fields{
+			"elapsed":  time.Since(startTime),
+			"ShouldSwitch Time": end.Sub(start).Seconds(),
+		}).Debug()
+	}
 
 	flowRateLock.Lock()
 	defer flowRateLock.Unlock()
@@ -334,6 +385,7 @@ func doUpdate() {
 	case XTCP:
 		flowRate = xtcpData.updateRateXtcp(rtt)
 	}
+
 
 	flowRate = changePulses(flowRate)
 
