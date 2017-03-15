@@ -47,7 +47,7 @@ func init() {
 
 	modeSwitchTime = time.Now()
 }
-
+//TODO make flowrate numbers avg
 func switchToDelay(rtt time.Duration) {
 	if flowMode == DELAY {
 		return
@@ -65,7 +65,7 @@ func switchToDelay(rtt time.Duration) {
 	currMode = "DELAY"
 	modeSwitchTime = time.Now()
 }
-
+//TODO make flowrate numbers avg
 func switchToXtcp(rtt time.Duration) {
 	if flowMode == XTCP {
 		return
@@ -185,9 +185,6 @@ func changePulses(fr float64) float64 {
 }
 
 func shouldSwitch (rtt time.Duration){
-	
-
-	// gather history and correct for phase shifts
 
 	measurementWindow := (4.8e6/est_bandwidth)
 
@@ -211,6 +208,7 @@ func shouldSwitch (rtt time.Duration){
 
 	clean_zt := []float64{}
 	clean_zout := []float64{}
+	clean_rtt := []float64{}
 	//N must be a power of 2
 	T := measurementInterval.Seconds()
 	N := int(duration_of_fft/T)
@@ -221,26 +219,6 @@ func shouldSwitch (rtt time.Duration){
 		}
 	}
 
-	//correct for missing entries
-	start := start_time_snapshot
-	/*corrected_rtt := make([]history.HistoryItemWithTime, 0)
-	corrected_zt := make([]history.HistoryItemWithTime, 0)
-	corrected_zout := make([]history.HistoryItemWithTime, 0)
-	for j:=0; j<len(raw_zt); {
-		for ;j<len(raw_zt) && raw_zt[j].Time.Before(start); {
-			j += 1 
-		}
-		if j>=len(raw_zt) {
-			break
-		}
-		corrected_rtt = append(corrected_rtt, raw_rtt[j])
-		corrected_zt = append(corrected_zt, raw_zt[j])
-		corrected_zout = append(corrected_zout, raw_zout[j])
-		start = start.Add(*measurementInterval)
-	}*/
-
-
-	//Correct got Phase Shifts
 	for i := 0; i<N; i++ {
 		if i>=len(raw_rtt) {
 			return
@@ -251,7 +229,10 @@ func shouldSwitch (rtt time.Duration){
 		}
 		clean_zt = append(clean_zt, raw_zt[j].Item.(float64))
 		clean_zout = append(clean_zout, raw_zout[i].Item.(float64))
+		clean_rtt = append(clean_rtt, raw_rtt[i].Item.(time.Duration).Seconds())
 	}
+
+	rtt = time.Duration(1000*mean(clean_rtt))*time.Millisecond
 
 	if mean(clean_zt)<0.3*est_bandwidth {
 		switchToDelay(rtt)
@@ -262,7 +243,7 @@ func shouldSwitch (rtt time.Duration){
 	
 	detrend(clean_zt)	
 	detrend(clean_zout)	
-	start = time.Now()	
+	start := time.Now()	
 	fft_zt := fft.FFTReal(clean_zt)
 	fft_zout := fft.FFTReal(clean_zout)
 	end := time.Now()	
@@ -385,7 +366,6 @@ func doUpdate() {
 	case XTCP:
 		flowRate = xtcpData.updateRateXtcp(rtt)
 	}
-
 
 	flowRate = changePulses(flowRate)
 
