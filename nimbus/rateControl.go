@@ -5,6 +5,7 @@ import (
 	"math"
 	"time"
 	fft "github.com/mjibson/go-dsp/fft"
+	win "github.com/mjibson/go-dsp/window"
 	"github.com/akshayknarayan/history"
 	"math/cmplx"
 )
@@ -144,7 +145,7 @@ func measure(interval time.Duration) (
 	}
 
 	zt = est_bandwidth*(rin/rout) - rin
-	if zt < 0 {
+	if zt < 0 || math.IsNaN(zt){
 		zt = 0
 	} else if zt>est_bandwidth {
 		zt = est_bandwidth
@@ -172,10 +173,10 @@ func changePulses(fr float64) float64 {
 	
 	fr_modified := est_bandwidth
 
-	measurementWindow := (4.8e6/est_bandwidth)	
+	measurementWindow := math.Max((4.8e6/est_bandwidth),min_rtt.Seconds())	
 	phase := elapsed/(2*measurementWindow)
 	phase -= math.Floor(phase)	
-	upRatio := (min_rtt.Seconds())/(2*measurementWindow)
+	upRatio := 0.25
 	if phase<upRatio {
 		return fr + (*pulseSize)*fr_modified*math.Sin(2*math.Pi*phase*(0.5/upRatio))
 	} else {
@@ -186,7 +187,7 @@ func changePulses(fr float64) float64 {
 
 func shouldSwitch (rtt time.Duration){
 
-	measurementWindow := (4.8e6/est_bandwidth)
+	measurementWindow := math.Max((4.8e6/est_bandwidth),min_rtt.Seconds())
 
  	duration_of_fft := 50*measurementWindow
 	
@@ -232,18 +233,21 @@ func shouldSwitch (rtt time.Duration){
 		clean_rtt = append(clean_rtt, raw_rtt[i].Item.(time.Duration).Seconds())
 	}
 
-	rtt = time.Duration(1000*mean(clean_rtt))*time.Millisecond
+	avg_rtt := time.Duration(1000*mean(clean_rtt))*time.Millisecond
 
 	if mean(clean_zt)<0.3*est_bandwidth {
-		switchToDelay(rtt)
+		switchToDelay(avg_rtt)
 		return
 	}
-
-	// TODO add hanning
 	
 	detrend(clean_zt)	
 	detrend(clean_zout)	
-	start := time.Now()	
+	start := time.Now()
+	hann_window := win.Hann(len(clean_zt))
+	for i:=0; i<len(clean_zt); i++ {
+		clean_zt[i] = clean_zt[i]*hann_window[i]
+		clean_zout[i] = clean_zout[i]*hann_window[i]
+	}
 	fft_zt := fft.FFTReal(clean_zt)
 	fft_zout := fft.FFTReal(clean_zout)
 	end := time.Now()	
@@ -267,12 +271,12 @@ func shouldSwitch (rtt time.Duration){
 	if expected_peak-0.5<freq[zout_peak] && freq[zout_peak]<expected_peak+0.5 {
 	 	if expected_peak-0.5<freq[zt_peak] && freq[zt_peak]<expected_peak+0.5 {
 			if cmplx.Abs(fft_zt[zt_peak])>thresh*cmplx.Abs(fft_zout[zout_peak]) {
-				switchToXtcp(rtt)
-			} else if  cmplx.Abs(fft_zt[zt_peak])<0.5*thresh*cmplx.Abs(fft_zout[zout_peak]) {
-				switchToDelay(rtt)			
+				switchToXtcp(avg_rtt)
+			} else if  cmplx.Abs(fft_zt[zt_peak])<0.75*thresh*cmplx.Abs(fft_zout[zout_peak]) {
+				switchToDelay(avg_rtt)			
 			}
 		} else {
-			switchToDelay(rtt)		
+			switchToDelay(avg_rtt)		
 		}
 	}
 
@@ -330,7 +334,7 @@ func doUpdate() {
 	
 
 	//TODO: measurement window shouldn't be less than RTT
-	measurementWindow := int64(1.0e9 * (4.8e6/est_bandwidth))
+	measurementWindow := int64(1.0e9 * math.Max((4.8e6/est_bandwidth),min_rtt.Seconds()))
 
 	rin, _, zt, rtt, err := measure(time.Duration(*measurementTimescale*measurementWindow) * time.Nanosecond)
 	if err != nil {
@@ -339,16 +343,6 @@ func doUpdate() {
 			"error":    err,
 			}).Debug()
 		return
-	}
-	start := time.Now()
-	shouldSwitch(rtt)
-	end := time.Now()
-
-	if end.Sub(start) > 5*time.Millisecond {
-		log.WithFields(log.Fields{
-			"elapsed":  time.Since(startTime),
-			"ShouldSwitch Time": end.Sub(start).Seconds(),
-		}).Debug()
 	}
 
 	flowRateLock.Lock()
@@ -366,6 +360,8 @@ func doUpdate() {
 	case XTCP:
 		flowRate = xtcpData.updateRateXtcp(rtt)
 	}
+
+	shouldSwitch(rtt)
 
 	flowRate = changePulses(flowRate)
 
