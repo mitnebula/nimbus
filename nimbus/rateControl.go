@@ -12,6 +12,8 @@ import (
 
 const (
 	alpha = 0.8
+	switchallowed = true
+	thresh = 0.5
 )
 
 var est_bandwidth float64
@@ -50,6 +52,9 @@ func init() {
 }
 //TODO make flowrate numbers avg
 func switchToDelay(rtt time.Duration) {
+	if !switchallowed {
+		return
+	}
 	if flowMode == DELAY {
 		return
 	}
@@ -68,6 +73,9 @@ func switchToDelay(rtt time.Duration) {
 }
 //TODO make flowrate numbers avg
 func switchToXtcp(rtt time.Duration) {
+	if !switchallowed {
+		return
+	}
 	if flowMode == XTCP {
 		return
 	}
@@ -145,7 +153,7 @@ func measure(interval time.Duration) (
 	}
 
 	zt = est_bandwidth*(rin/rout) - rin
-	if zt < 0 || math.IsNaN(zt){
+	if math.IsNaN(zt) || zt < 0{
 		zt = 0
 	} else if zt>est_bandwidth {
 		zt = est_bandwidth
@@ -196,7 +204,7 @@ func shouldSwitch (rtt time.Duration){
 	return
 	}
 		
-	thresh := 0.5
+	
 	end_time_snapshot := time.Now()
 	start_time_snapshot := time.Now().Add(-time.Duration(duration_of_fft+1.0)*time.Second)
 	
@@ -265,10 +273,11 @@ func shouldSwitch (rtt time.Duration){
 
 	//Pluse Size is fixed to 2*measurementWindow
 	expected_peak := 1.0/(2*measurementWindow)
-	zout_peak := findPeak(0.8*expected_peak, 1.6*expected_peak, freq, fft_zout)  
-	zt_peak := findPeak(0.8*expected_peak, 1.6*expected_peak, freq, fft_zt)	
-
-	if expected_peak-0.5<freq[zout_peak] && freq[zout_peak]<expected_peak+0.5 {
+	zout_peak, mean_zout := findPeak(0.8*expected_peak, 1.6*expected_peak, freq, fft_zout)  
+	zt_peak, mean_zt:= findPeak(0.8*expected_peak, 1.6*expected_peak, freq, fft_zt)	
+	exp_peak_zt, _ := findPeak(1.0*expected_peak-0.5, 1.0*expected_peak+0.5, freq, fft_zt)
+	exp_peak_zout, _ := findPeak(1.0*expected_peak-0.5, 1.0*expected_peak+0.5, freq, fft_zout)
+	/*if expected_peak-0.5<freq[zout_peak] && freq[zout_peak]<expected_peak+0.5 {
 	 	if expected_peak-0.5<freq[zt_peak] && freq[zt_peak]<expected_peak+0.5 {
 			if cmplx.Abs(fft_zt[zt_peak])>thresh*cmplx.Abs(fft_zout[zout_peak]) {
 				switchToXtcp(avg_rtt)
@@ -278,8 +287,13 @@ func shouldSwitch (rtt time.Duration){
 		} else {
 			switchToDelay(avg_rtt)		
 		}
+	}*/
+	elasticity := (cmplx.Abs(fft_zt[exp_peak_zt])-mean_zt)/(cmplx.Abs(fft_zout[exp_peak_zout])-mean_zout)
+	if elasticity>thresh*1.0 {
+		switchToXtcp(avg_rtt)
+	} else if elasticity<thresh*0.75{
+		switchToDelay(avg_rtt)
 	}
-
 	log.WithFields(log.Fields{
 		"elapsed":  time.Since(startTime),
 		"ZoutPeak":       freq[zout_peak],
@@ -287,26 +301,31 @@ func shouldSwitch (rtt time.Duration){
 		"ZoutPeakVal":      cmplx.Abs(fft_zout[zout_peak]),
 		"ZtPeakVal":     cmplx.Abs(fft_zt[zt_peak]),
 		"Expected Peak":   expected_peak,
+		"Elasticity": elasticity,
 	}).Debug()	
 
 	return
 }
 
-func findPeak(start_freq float64, end_freq float64,xf []float64, fft []complex128) int {
-	max_ind := 0			
+func findPeak(start_freq float64, end_freq float64,xf []float64, fft []complex128) (int, float64) {
+	max_ind := 0
+	mean := 0.0
+	count := 0.0
 	for j:=0; j<(len(xf)) ; j++ {
-		if xf[j]<start_freq {
+		if xf[j]<=start_freq {
 			max_ind=j
 			continue
 		}
 		if xf[j]>end_freq{
 			break
 		}
+		mean += cmplx.Abs(fft[j])
+		count += 1.0
 		if cmplx.Abs(fft[j])>cmplx.Abs(fft[max_ind]){
 			max_ind=j
 		}	
 	}
-	return max_ind
+	return max_ind, mean/max(count, 1.0)
 }
 func mean(a []float64) float64{
 	mean_val := 0.0
@@ -331,9 +350,7 @@ func max(a, b float64) float64{
 }
 
 func doUpdate() {
-	
 
-	//TODO: measurement window shouldn't be less than RTT
 	measurementWindow := int64(1.0e9 * math.Max((4.8e6/est_bandwidth),min_rtt.Seconds()))
 
 	rin, _, zt, rtt, err := measure(time.Duration(*measurementTimescale*measurementWindow) * time.Nanosecond)
@@ -371,7 +388,6 @@ func doUpdate() {
 }
 
 func flowRateUpdater() {
-	//TODO: measurement interval should kind of depend on duration of FFT
 	for _ = range time.Tick(*measurementInterval) {
 		doUpdate()
 
