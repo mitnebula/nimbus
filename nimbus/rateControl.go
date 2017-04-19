@@ -244,7 +244,7 @@ func shouldSwitch (rtt time.Duration){
 	avg_rtt := time.Duration(1000*mean(clean_rtt))*time.Millisecond
 
 	switched_already := false
-	if mean(clean_zt)<0.2*est_bandwidth {
+	if mean(clean_zt)<0.25*est_bandwidth {
 		switchToDelay(avg_rtt)
 		switched_already=true
 	} else if mean(clean_zt)>0.8*est_bandwidth {
@@ -277,9 +277,9 @@ func shouldSwitch (rtt time.Duration){
 
 	//Pluse Size is fixed to 2*measurementWindow
 	expected_peak := 1.0/(2*measurementWindow)
-	_, mean_zt:= findPeak(1.2*expected_peak, 1.6*expected_peak, freq, fft_zt)	
-	exp_peak_zt, _ := findPeak(0.9*expected_peak, 1.1*expected_peak, freq, fft_zt)
-	exp_peak_zout, _ := findPeak(0.9*expected_peak, 1.1*expected_peak, freq, fft_zout)
+	_, mean_zt:= findPeak(2.2*expected_peak, 3.8*expected_peak, freq, fft_zt)	
+	exp_peak_zt, _ := findPeak(expected_peak-0.5, expected_peak+0.5, freq, fft_zt)
+	exp_peak_zout, _ := findPeak(expected_peak-0.5, expected_peak+0.5, freq, fft_zout)
 
 	elasticity := (cmplx.Abs(fft_zt[exp_peak_zt])-mean_zt)/(cmplx.Abs(fft_zout[exp_peak_zout]))
 	if elasticity>thresh*1 && !switched_already{
@@ -288,11 +288,11 @@ func shouldSwitch (rtt time.Duration){
 		switchToDelay(avg_rtt)
 	}
 	log.WithFields(log.Fields{
-		"elapsed":  time.Since(startTime),
 		"ZoutPeakVal":      cmplx.Abs(fft_zout[exp_peak_zout]),
 		"ZtPeakVal":     cmplx.Abs(fft_zt[exp_peak_zt]),
-		"Expected Peak":   expected_peak,
+		"elapsed":  time.Since(startTime),
 		"Elasticity": elasticity,
+		"Expected Peak":   expected_peak,
 	}).Debug()	
 
 	return
