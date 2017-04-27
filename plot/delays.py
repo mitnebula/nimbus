@@ -15,13 +15,10 @@ def readDelays(tr):
         yield (r['elapsed'], r['rtt'])
 
 def makeDelayPlot(name, tr, figInd):
-    sw = readSwitches(tr)
     t, xt = zip(*readDelays(tr))
-
     fig1 = plt.figure(figInd)
     plt.xlabel('Time (s)')
     plt.ylabel('RTT (s)')
-    vlines(plt, sw)
     plt.title(name)
     plt.plot(t, xt, label='RTT')
 

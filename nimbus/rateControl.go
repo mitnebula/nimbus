@@ -27,6 +27,8 @@ var zt_history *history.History
 var xt_history *history.History
 var zout_history *history.History
 
+
+
 var modeSwitchTime time.Time
 
 // test state
@@ -52,7 +54,7 @@ func init() {
 }
 //TODO make flowrate numbers avg
 func switchToDelay(rtt time.Duration) {
-	if !switchallowed {
+	if !useSwitching {
 		return
 	}
 	if flowMode == DELAY {
@@ -73,7 +75,7 @@ func switchToDelay(rtt time.Duration) {
 }
 //TODO make flowrate numbers avg
 func switchToXtcp(rtt time.Duration) {
-	if !switchallowed {
+	if !useSwitching {
 		return
 	}
 	if flowMode == XTCP {
@@ -200,7 +202,7 @@ func shouldSwitch (rtt time.Duration){
  	duration_of_fft := 50*measurementWindow
 	
 	//Too short a duration don't switch 
-	if time.Since(startTime) < time.Duration(10.0 + 1.0*duration_of_fft)*time.Second {
+	if time.Since(startTime) < time.Duration(15.0)*time.Second {
 	return
 	}
 		
@@ -244,13 +246,13 @@ func shouldSwitch (rtt time.Duration){
 	avg_rtt := time.Duration(1000*mean(clean_rtt))*time.Millisecond
 
 	switched_already := false
-	if mean(clean_zt)<0.25*est_bandwidth {
+	/*if mean(clean_zt)<0.25*est_bandwidth {
 		switchToDelay(avg_rtt)
 		switched_already=true
 	} else if mean(clean_zt)>0.8*est_bandwidth {
 		switchToXtcp(avg_rtt)
 		switched_already=true
-	}
+	}*/
 	
 	detrend(clean_zt)	
 	detrend(clean_zout)	
