@@ -1,0 +1,97 @@
+In the Nebula project, the MIT team is working on Nimbus, a system for
+aggregate traffic control, as part of the Tunable Protocol Synthesis
+component.
+
+Participants: Hari Balakrishnan (PI), Mohammad Alizadeh (PI), Prateesh
+Goyal (PhD student), Akshay Narayan (PhD student), Frank Cangialosi
+(PhD student), Srinivas Narayana (post doc).
+
+Activities: Over the reporting period, we have developed the basic
+design of the Nimbus protocol. Nimbus incorporates several new
+techniques for congestion control of large traffic aggregates between
+network control points (NCPs) distributed across the network. An
+important challenge in aggregate traffic control is that the traffic
+between NCPs controlled by a given organization (or collaborating
+organizations) may flow over paths that also carry traffic not under
+the control of the communicating nodes; this would be most common when
+the underlying network is not a dedicated one, as would often be the
+case in practice.
+
+Treating packets from many flows as a single aggregate offers a
+significant opportunity to rethink and improve transport performance
+in the Internet. First, TCP connections today independently estimate
+network conditions. This approach is undesirable because it does not
+share congestion information among flows that share common
+bottlenecks. The result is slow reaction to congestion and loss of
+throughput, especially for short flows.
+
+Second, we expect that traffic traversing a borderbox will often be
+persistent, i.e., almost always backlogged, because of the large
+number of envisioned concurrent flows and/or data rates. Persistent
+traffic greatly improves our ability to accurately estimate both the
+volume and the nature of cross traffic, and react appropriately. For
+example, we can send intricate bursts of traffic and monitor the
+reaction of competing traffic to detect whether competing traffic
+includes long-running TCP flows.
+
+Nimbus exploits these observations to achieve three desirable
+properties for aggregate traffic control, as shown in the attached
+figure.
+
+1. Achieve high throughput with a specified delay threshold. The aim
+is to prevent bufferbloat, mimicking the behavior that would be
+achieved on a router with a good active queue management scheme, but
+implemented with only border-to-border mechanisms in the border
+overlay network.
+
+2. Harness opportunities for higher throughput by accurately
+estimating cross traffic and identifying when its volume changes.
+
+3. Compete well with prevalent loss-based TCP methods such as Cubic
+and NewReno by identifying and responding to the presence of such
+flows.
+
+To our knowledge, no prior method provides all three properties. Some
+delay-based control algorithms like Vegas and FAST achieve the first,
+but not the second or third properties. Algorithms that focus on "TCP
+friendliness" achieve the third property (binomial control,
+equation-based control, compound), but like traditional loss-based
+schemes, don't achieve the first or second. And some "high-speed" TCP
+algorithms designed for large bandwidth-delay products achieve the
+second and third properties, but not the first
+
+Nimbus incorporates three new ideas. The first is "explicit mode
+switching". Nimbus uses two modes, a "delay-control mode" and a
+"TCP-competitive mode", and a method to switch between them. This
+switching relies on a method by which the communicating nodes estimate
+whether the cross traffic is elastic, i.e., behaves as one or more
+long-running TCPs that adapt to congestion, or whether it is
+inelastic, i.e., is made up of long TCPs that are rate-limited by
+bottlenecks elsewhere along their paths, or are made up of short TCPs,
+or are essentially constant-rate flows. We have investigated two
+different mode switching algorithms, and have converged on one of them
+as the better choice based on simulation results.
+
+The second idea is a stable delay-control algorithm that achieves high
+throughput while maintaining a specified target queueing delay. We
+propose to derive a simple control rule for this mode from first
+principles as a function of the packet delay and the rate of change of
+that delay. Both variables are easy to measure in practice.
+
+The third idea is a TCP-competitive mode where the sending node mimics
+the behavior of a specified number of long-running TCPs, but does so
+better than prior work on MulTCP and equation-based congestion
+control. The new idea is to maintain a set of virtual window sizes in
+TCP-competitive mode that emulate TCP's standard additive-increase
+multiplicative-decrease rules.
+
+In summary, Nimbus is the first proposed multi-modal control protocol
+that explicitly picks between different control strategies based on
+measured observations of the network. It is also the first proposed
+scheme for persistent traffic aggregates.
+
+We have completed an initial design of Nimbus and its mechanisms, and
+are currently actively prototyping the implementation as a user-level
+Linux program. Over the next reporting period we plan to develop
+experiments to evaluate the performance of Nimbus and compare it to
+alternative approaches.
