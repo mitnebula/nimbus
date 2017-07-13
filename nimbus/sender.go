@@ -1,13 +1,13 @@
 package main
 
 import (
-	log "github.com/Sirupsen/logrus"
 	"net"
 	"sync"
 	"time"
 
 	"github.com/akshayknarayan/history"
-	"github.mit.edu/hari/nimbus-cc/packetops"
+	"github.com/akshayknarayan/udp/packetops"
+	log "github.com/sirupsen/logrus"
 )
 
 const (

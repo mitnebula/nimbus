@@ -2,10 +2,11 @@ package main
 
 import (
 	"fmt"
-	log "github.com/Sirupsen/logrus"
 	"math/rand"
 	"sync"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type xtcpDataContainer struct {

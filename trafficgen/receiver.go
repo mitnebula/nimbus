@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.mit.edu/hari/nimbus-cc/packetops"
+	"github.com/akshayknarayan/udp/packetops"
 )
 
 func setupReceiver() (syn packetops.Packet, counter *int64, offset int) {

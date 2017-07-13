@@ -2,13 +2,13 @@ package main
 
 import (
 	"flag"
-	log "github.com/Sirupsen/logrus"
 	"os"
 	"os/signal"
 	"runtime/pprof"
 	"time"
 
-	"github.mit.edu/hari/nimbus-cc/receiver"
+	"github.com/akshayknarayan/udp/receiver"
+	log "github.com/sirupsen/logrus"
 )
 
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile `file`")
@@ -64,7 +64,7 @@ func main() {
 			log.Error("could not start CPU profile: ", err)
 		}
 		log.WithFields(log.Fields{
-			"Starting Profiling, Profile File":              *cpuprofile,
+			"Starting Profiling, Profile File": *cpuprofile,
 		}).Info("Starting ", *mode)
 		defer pprof.StopCPUProfile()
 	}

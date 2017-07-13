@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.mit.edu/hari/nimbus-cc/packetops"
+	"github.com/akshayknarayan/udp/packetops"
 )
 
 type Packet struct {
