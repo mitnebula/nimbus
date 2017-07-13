@@ -4,15 +4,11 @@ Nimbus Userspace Implementation
 Installation
 ------------
 
-This is a go project. Its location as a subdirectory within this repository makes running it slightly complicated.
+This is a go project.
 
-1. Install golang and set up a ```$GOPATH``` directory (usually ```~/go-work```).
-
-2. Add $GOPATH/bin to your PATH.
-
-3. Symlink the packages in this directory into ```$GOPATH/src/github.mit.edu/hari/nimbus-cc```
-
-4. ```go install nimbus``` and ```go install trafficgen```
+1. Set up go: https://golang.org/doc/install
+2. ```go get github.com/mitnebula/nimbus/...```
+3. ```go install github.com/mitnebula/nimbus/nimbus``` and ```go install github.com/mitnebula/nimbus/trafficgen```
 
 Running
 -------
